@@ -1,0 +1,31 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/office_snacks?sslmode=disable}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  jackson:
+    time-zone: UTC
+server:
+  port: ${PORT:8080}
+app:
+  employee-id: ${APP_EMPLOYEE_ID:1}
+  admin:
+    username: ${APP_ADMIN_USERNAME:admin}
+    password: ${APP_ADMIN_PASSWORD}
+  employee:
+    username: ${APP_EMPLOYEE_USERNAME:employee}
+    password: ${APP_EMPLOYEE_PASSWORD}
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  jpa:
+    hibernate:
+      ddl-auto: validate
