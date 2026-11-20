@@ -67,7 +67,14 @@ async function getRecords(params) {
   }
   if (params.has('employeeId')) query = query.eq('employee_id', Number(params.get('employeeId')));
   if (params.has('snackId')) query = query.eq('snack_id', Number(params.get('snackId')));
-  return unwrap(await query, 'Could not load snack records').map(recordDto);
+  const rows = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const page = unwrap(await query.range(offset, offset + pageSize - 1), 'Could not load snack records');
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows.map(recordDto);
 }
 
 function summarize(rows, key, nameKey) {

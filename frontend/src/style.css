@@ -7,3 +7,5 @@
 @media(max-width:700px){.snack-item-row{grid-template-columns:minmax(0,1fr) 70px auto;gap:6px;padding:8px}.remove-snack{font-size:9px;padding:8px 2px}.edit-modal{padding:17px}}
 .report-snacks{display:flex;flex-wrap:wrap;gap:6px;min-width:190px}.report-snack{display:inline-flex;gap:6px;align-items:center;padding:5px 8px;border:1px solid #e4eee7;border-radius:6px;background:#f7faf8;color:#496552;font-size:10px}.report-snack b{color:#28714b;font-size:9px}
 .history-summary{margin:16px 0 20px;padding:14px;background:#fbfdfb;border:1px solid #e9efeb;border-radius:9px}.history-summary .panel-head{margin-bottom:10px}.history-summary .panel-head h2{font-size:12px}.history-summary .report-snacks{min-width:0}
+
+.report-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.report-period-label{font-size:10px;color:#7d8a81;margin:-5px 0 12px}.report-period-label b{color:#45634f}@media(max-width:900px){.report-actions{max-width:100%}.report-filters{flex-wrap:wrap}.report-total{margin-left:0}}
