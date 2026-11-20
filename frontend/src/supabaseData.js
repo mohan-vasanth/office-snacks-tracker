@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient';
 
-const recordSelection = 'id, employee_id, snack_id, quantity, taken_at, employee:employees!fk_record_employee(name), snack:snacks!fk_record_snack(name)';
+const recordSelection = 'id, employee_id, snack_id, quantity, taken_at, break_type, unit_price, employee:employees!fk_record_employee(name), snack:snacks!fk_record_snack(name)';
 
 function ensureClient() {
   if (!supabase) throw new Error('Supabase is not configured. Set the VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY values in frontend/.env.local, then restart Vite.');
@@ -26,7 +26,7 @@ function parseBody(opts) {
 }
 
 function entityDto(row) {
-  return row && { id: row.id, name: row.name, active: row.active, createdAt: row.created_at };
+  return row && { id: row.id, name: row.name, active: row.active, createdAt: row.created_at, unitPrice: row.unit_price ?? null };
 }
 
 function recordDto(row) {
@@ -40,6 +40,9 @@ function recordDto(row) {
     snackId: row.snack_id,
     snackName: snack?.name || '',
     quantity: row.quantity,
+    breakType: row.break_type ?? null,
+    unitPrice: row.unit_price == null ? null : Number(row.unit_price),
+    amount: row.unit_price == null ? null : Number(row.unit_price) * Number(row.quantity),
     takenAt: row.taken_at,
   };
 }
@@ -57,7 +60,7 @@ function nextDate(date) {
 
 async function getRecords(params) {
   const client = ensureClient();
-  let query = client.from('snack_records').select(recordSelection).order('taken_at', { ascending: false });
+  let query = client.from('snack_records').select(recordSelection).order('taken_at', { ascending: false }).order('id', { ascending: false });
   if (params.has('date')) {
     const date = params.get('date');
     query = query.gte('taken_at', kolkataStart(date)).lt('taken_at', kolkataStart(nextDate(date)));
@@ -67,6 +70,8 @@ async function getRecords(params) {
   }
   if (params.has('employeeId')) query = query.eq('employee_id', Number(params.get('employeeId')));
   if (params.has('snackId')) query = query.eq('snack_id', Number(params.get('snackId')));
+  if (params.get('breakType') === 'UNASSIGNED') query = query.is('break_type', null);
+  else if (params.has('breakType')) query = query.eq('break_type', params.get('breakType'));
   const rows = [];
   const pageSize = 1000;
   for (let offset = 0; ; offset += pageSize) {
@@ -89,6 +94,17 @@ function summarize(rows, key, nameKey) {
   return [...totals.values()].sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name));
 }
 
+function summarizeBreak(rows, breakType = null) {
+  const selected = breakType ? rows.filter(row => row.breakType === breakType) : rows;
+  return {
+    snackCount: new Set(selected.map(row => (breakType ? row.snackId : `${row.breakType ?? 'UNASSIGNED'}:${row.snackId}`))).size,
+    totalQuantity: selected.reduce((sum, row) => sum + Number(row.quantity), 0),
+    recordCount: selected.length,
+    totalAmount: selected.reduce((sum, row) => sum + (row.amount ?? 0), 0),
+    unpricedRecords: selected.filter(row => row.unitPrice == null).length,
+  };
+}
+
 async function countRows(table, activeOnly = false) {
   let query = ensureClient().from(table).select('id', { count: 'exact', head: true });
   if (activeOnly) query = query.eq('active', true);
@@ -100,16 +116,20 @@ async function countRows(table, activeOnly = false) {
 async function entityRequest(table, method, id, body) {
   const client = ensureClient();
   if (method === 'GET') {
-    let query = client.from(table).select('id,name,active,created_at');
+    let query = client.from(table).select(table === 'snacks' ? 'id,name,active,created_at,unit_price' : 'id,name,active,created_at');
     query = id ? query.eq('id', Number(id)).single() : query.order('name');
     const data = unwrap(await query, `Could not load ${table}`);
     return Array.isArray(data) ? data.map(entityDto) : entityDto(data);
   }
   if (method === 'POST') {
-    return entityDto(unwrap(await client.from(table).insert({ name: body.name.trim(), active: body.active !== false }).select('id,name,active,created_at').single()));
+    const values = { name: body.name.trim(), active: body.active !== false };
+    if (table === 'snacks') values.unit_price = body.unitPrice ?? null;
+    return entityDto(unwrap(await client.from(table).insert(values).select(table === 'snacks' ? 'id,name,active,created_at,unit_price' : 'id,name,active,created_at').single()));
   }
   if (method === 'PUT') {
-    return entityDto(unwrap(await client.from(table).update({ name: body.name.trim(), active: body.active }).eq('id', Number(id)).select('id,name,active,created_at').single()));
+    const values = { name: body.name.trim(), active: body.active };
+    if (table === 'snacks' && Object.hasOwn(body, 'unitPrice')) values.unit_price = body.unitPrice;
+    return entityDto(unwrap(await client.from(table).update(values).eq('id', Number(id)).select(table === 'snacks' ? 'id,name,active,created_at,unit_price' : 'id,name,active,created_at').single()));
   }
   if (method === 'DELETE') {
     const isEmployee = table === 'employees';
@@ -152,11 +172,14 @@ export async function api(path, opts = {}) {
 
   if (parts[0] === 'records' && parts.length === 1 && method === 'GET') return getRecords(request.searchParams);
   if (parts[0] === 'records' && parts.length === 1 && method === 'POST') {
-    const row = unwrap(await client.from('snack_records').insert({ employee_id: body.employeeId, snack_id: body.snackId, quantity: body.quantity }).select(recordSelection).single());
+    const snack = unwrap(await client.from('snacks').select('unit_price').eq('id', Number(body.snackId)).single());
+    const row = unwrap(await client.from('snack_records').insert({ employee_id: body.employeeId, snack_id: body.snackId, quantity: body.quantity, break_type: body.breakType, unit_price: snack.unit_price }).select(recordSelection).single());
     return recordDto(row);
   }
   if (parts[0] === 'records' && parts[1] === 'batch' && method === 'POST') {
-    const rows = body.items.map(item => ({ employee_id: body.employeeId, snack_id: item.snackId, quantity: item.quantity }));
+    const prices = unwrap(await client.from('snacks').select('id,unit_price').in('id', body.items.map(item => Number(item.snackId))));
+    const priceBySnack = new Map(prices.map(item => [Number(item.id), item.unit_price]));
+    const rows = body.items.map(item => ({ employee_id: body.employeeId, snack_id: item.snackId, quantity: item.quantity, break_type: body.breakType, unit_price: priceBySnack.get(Number(item.snackId)) ?? null }));
     return unwrap(await client.from('snack_records').insert(rows).select(recordSelection)).map(recordDto);
   }
   if (parts[0] === 'records' && parts[1] && method === 'GET') {
@@ -164,7 +187,11 @@ export async function api(path, opts = {}) {
     return recordDto(row);
   }
   if (parts[0] === 'records' && parts[1] && method === 'PUT') {
-    const row = unwrap(await client.from('snack_records').update({ employee_id: body.employeeId, snack_id: body.snackId, quantity: body.quantity }).eq('id', Number(parts[1])).select(recordSelection).single());
+    const current = unwrap(await client.from('snack_records').select('snack_id,break_type,unit_price').eq('id', Number(parts[1])).single());
+    let unitPrice = current.unit_price;
+    if (Number(current.snack_id) !== Number(body.snackId) || unitPrice == null) unitPrice = unwrap(await client.from('snacks').select('unit_price').eq('id', Number(body.snackId)).single()).unit_price;
+    const breakType = Object.prototype.hasOwnProperty.call(body, 'breakType') ? body.breakType : current.break_type;
+    const row = unwrap(await client.from('snack_records').update({ employee_id: body.employeeId, snack_id: body.snackId, quantity: body.quantity, break_type: breakType, unit_price: unitPrice }).eq('id', Number(parts[1])).select(recordSelection).single());
     return recordDto(row);
   }
   if (parts[0] === 'records' && parts[1] && method === 'DELETE') {
@@ -178,7 +205,7 @@ export async function api(path, opts = {}) {
     const [employees, activeEmployees, activeSnacks, records] = await Promise.all([
       countRows('employees'), countRows('employees', true), countRows('snacks', true), getRecords(new URLSearchParams({ date })),
     ]);
-    return { employeeCount: employees, activeEmployeeCount: activeEmployees, activeSnackCount: activeSnacks, todayRecordCount: records.length, todayQuantity: records.reduce((sum, record) => sum + record.quantity, 0) };
+    return { employeeCount: employees, activeEmployeeCount: activeEmployees, activeSnackCount: activeSnacks, todayRecordCount: records.length, todayQuantity: records.reduce((sum, record) => sum + record.quantity, 0), morningBreak: summarizeBreak(records, 'MORNING'), eveningBreak: summarizeBreak(records, 'EVENING'), combinedBreak: summarizeBreak(records) };
   }
   if (parts[0] === 'dashboard' && (parts[1] === 'employee-summary' || parts[1] === 'snack-summary')) {
     const date = request.searchParams.get('date') || new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
@@ -195,6 +222,7 @@ export async function api(path, opts = {}) {
       params.set('from', `${year}-${String(month).padStart(2, '0')}-01`);
       params.set('to', `${year}-${String(month).padStart(2, '0')}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, '0')}`);
     }
+    if (request.searchParams.has('breakType')) params.set('breakType', request.searchParams.get('breakType'));
     const rows = await getRecords(params);
     const employees = summarize(rows, 'employeeId', 'employeeName');
     const snacks = summarize(rows, 'snackId', 'snackName');
