@@ -13,7 +13,8 @@ const expected = JSON.parse(readFileSync(`${fixture}/expected.json`, 'utf8'));
 const sqlDir = `${backupDir}/restore-sql`;
 const files = readdirSync(sqlDir).sort();
 const sql = Object.fromEntries(files.map(f => [f.replace(/^\d+-|\.sql$/g, ''), readFileSync(`${sqlDir}/${f}`, 'utf8')]));
-const oldSetup = execSync('git show HEAD:database/supabase_setup.sql', { cwd: repo, encoding: 'utf8', maxBuffer: 1e7 });
+// The ORIGINAL production schema, pinned (commit ed23a6f). Do not use git HEAD: HEAD now contains the two-role setup SQL.
+const oldSetup = readFileSync(repo + 'database/tests/fixtures/supabase_setup.pre-two-role.sql', 'utf8');
 const migration = readFileSync(`${repo}database/migrations/2026-11-23-two-role-user-management.sql`, 'utf8');
 const rollback = readFileSync(`${repo}database/migrations/2026-11-23-two-role-user-management.rollback.sql`, 'utf8');
 

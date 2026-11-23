@@ -14,7 +14,8 @@ const grants = read('database/migrations/2026-11-23-service-role-grants.sql');
 const grantsRollback = read('database/migrations/2026-11-23-service-role-grants.rollback.sql');
 const fnSource = read('supabase/functions/admin-users/index.ts');
 const docs = read('docs/USER_MANAGEMENT_SETUP.md');
-const oldSetup = execSync('git show HEAD:database/supabase_setup.sql', { cwd: repo, encoding: 'utf8', maxBuffer: 1e7 });
+// The ORIGINAL production schema, pinned (commit ed23a6f). Do not use git HEAD: HEAD now contains the two-role setup SQL.
+const oldSetup = readFileSync(repo + 'database/tests/fixtures/supabase_setup.pre-two-role.sql', 'utf8');
 const sha = s => createHash('sha256').update(s).digest('hex');
 
 // SHA-256 of the two-role migration files exactly as reviewed and approved. Any edit to them fails this check on purpose.

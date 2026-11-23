@@ -7,7 +7,8 @@ const src = readFileSync(repo + 'scripts/deploy-two-role.ps1', 'utf8');
 const grab = (re) => { const m = src.match(re); if (!m) throw new Error('SQL not found: ' + re); return m[1]; };
 const preSql = grab(/\$pf = Get-CliRow \(& \$ReadRunner @'\r?\n([\s\S]*?)\r?\n'@\)/);
 const postSql = grab(/\$pc = Get-CliRow \(& \$ReadRunner @'\r?\n([\s\S]*?)\r?\n'@\)/);
-const oldSetup = execSync('git show HEAD:database/supabase_setup.sql', { cwd: repo, encoding: 'utf8', maxBuffer: 1e7 });
+// The ORIGINAL production schema, pinned (commit ed23a6f). Do not use git HEAD: HEAD now contains the two-role setup SQL.
+const oldSetup = readFileSync(repo + 'database/tests/fixtures/supabase_setup.pre-two-role.sql', 'utf8');
 const migration = readFileSync(repo + 'database/migrations/2026-11-23-two-role-user-management.sql', 'utf8');
 const db = new PGlite();
 await db.exec(`CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN BYPASSRLS; CREATE SCHEMA auth;

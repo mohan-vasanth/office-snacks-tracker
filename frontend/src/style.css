@@ -53,3 +53,19 @@ input:focus,select:focus{outline:none;border-color:#2563eb!important;box-shadow:
 .break-report-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0}.break-report-stats .stat-card{min-width:0}.break-report-stats .stat-card strong{font-size:21px;overflow-wrap:anywhere}.break-report-stats .stat-top{gap:7px}
 @media(max-width:1000px){.break-dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.break-dashboard-grid .break-summary-panel:last-child{grid-column:1/-1}.break-report-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.break-dashboard-grid{grid-template-columns:1fr;gap:10px}.break-dashboard-grid .break-summary-panel:last-child{grid-column:auto}.break-report-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.break-report-stats .stat-card{padding:12px}.break-report-stats .stat-card strong{font-size:18px}.break-summary-values{gap:12px}.break-report-stats .stat-top{align-items:flex-start}}
+/* User Management: show/hide toggle inside the Create User password field; readable email column */
+.password-field{position:relative;display:block}
+.add-form .password-field input{padding-right:40px}
+.password-field .eye-btn{position:absolute;top:50%;right:5px;transform:translateY(-50%);cursor:pointer;color:#64748b}
+.password-field .eye-btn:hover{background:#eef2f7;color:#0f172a}
+.password-field .eye-btn:focus-visible{outline:2px solid #2563eb;outline-offset:1px}
+.user-email{font-weight:600;color:#0f172a;overflow-wrap:anywhere}
+/* User Management: Password column (temporary passwords set in THIS session only) */
+.pw-cell{white-space:nowrap}
+.temp-password{display:inline-flex;align-items:center;gap:3px}
+.temp-password-value{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#0f172a;background:#f1f5f9;border-radius:6px;padding:3px 7px;letter-spacing:.4px}
+.reveal-btn{color:#64748b;cursor:pointer;padding:4px}
+.reveal-btn:hover{background:#eef2f7;color:#0f172a}
+.reveal-btn:focus-visible{outline:2px solid #2563eb;outline-offset:1px}
+.pw-note{display:inline-flex;align-items:center;gap:4px;color:#94a3b8;font-size:11px}
+.pw-info{display:inline-grid;place-items:center;color:#94a3b8;cursor:help}

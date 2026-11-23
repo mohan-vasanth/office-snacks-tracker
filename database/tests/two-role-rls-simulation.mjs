@@ -6,7 +6,8 @@ import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
 const repo = process.cwd();
-const oldSetup = execSync('git show HEAD:database/supabase_setup.sql', { cwd: repo, encoding: 'utf8', maxBuffer: 1e7 });
+// The ORIGINAL production schema, pinned (commit ed23a6f). Do not use git HEAD: HEAD now contains the two-role setup SQL.
+const oldSetup = readFileSync(repo + 'database/tests/fixtures/supabase_setup.pre-two-role.sql', 'utf8');
 const newSetup = readFileSync(`${repo}/database/supabase_setup.sql`, 'utf8');
 const migration = readFileSync(`${repo}/database/migrations/2026-11-23-two-role-user-management.sql`, 'utf8');
 
