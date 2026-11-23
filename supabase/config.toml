@@ -1,0 +1,5 @@
+project_id = "atmmjqwrqeidlqozuuje"
+
+# The function verifies the caller's session and admin role itself (see index.ts).
+[functions.admin-users]
+verify_jwt = false

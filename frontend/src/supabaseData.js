@@ -149,6 +149,35 @@ async function entityRequest(table, method, id, body) {
   throw new Error(`Unsupported ${method} request for ${table}.`);
 }
 
+// ---- User management (ADMIN only; enforced by the database and the admin-users Edge Function) ----
+
+export async function listUsers() {
+  const result = await ensureClient().rpc('admin_list_users');
+  if (result.error?.code === 'PGRST202') {
+    throw new Error('User management is not installed. Run database/migrations/2026-11-23-two-role-user-management.sql in the Supabase SQL Editor.');
+  }
+  return unwrap(result, 'Could not load users');
+}
+
+export async function adminUsers(action, payload = {}) {
+  const { data, error } = await ensureClient().functions.invoke('admin-users', { body: { action, ...payload } });
+  if (error) {
+    let message = 'The user management service could not be reached.';
+    const status = error.context?.status;
+    if (status === 404) message = 'The admin-users Edge Function is not deployed in this Supabase project.';
+    else if (error.context?.json) {
+      try { message = (await error.context.json()).error || message; } catch { /* keep default */ }
+    }
+    throw new Error(message);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+export async function completePasswordChange() {
+  unwrap(await ensureClient().rpc('complete_password_change'));
+}
+
 export async function api(path, opts = {}) {
   const client = ensureClient();
   const request = new URL(path, window.location.origin);

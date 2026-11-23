@@ -9,3 +9,7 @@ dist/
 *.log
 .idea/
 .vscode/
+
+# Local backups and Supabase CLI link state
+backups/
+supabase/.temp/
