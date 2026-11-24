@@ -47,6 +47,17 @@ function recordDto(row) {
   };
 }
 
+const noSnacksMissing = 'No Snacks is not installed in this Supabase project. Run database/migrations/2026-11-25-no-snacks-days.sql in the SQL Editor, then reload.';
+const noSnacksNeedsBreak = 'No Snacks needs the break-time update. Run database/migrations/2026-11-26-no-snacks-break-type.sql in the SQL Editor, then reload.';
+const noSnacksEditMissing = 'Editing No Snacks is not installed in this Supabase project. Run database/migrations/2026-11-27-no-snacks-edit.sql in the SQL Editor, then reload.';
+const noSnacksAdminMissing = 'Editing No Snacks as an admin is not installed in this Supabase project. Run database/migrations/2026-11-28-no-snacks-admin-edit.sql in the SQL Editor, then reload.';
+const noSnackSelection = 'id, employee_id, day, break_type, created_at, employee:employees(name)';
+
+function noSnackDto(row) {
+  const employee = Array.isArray(row.employee) ? row.employee[0] : row.employee;
+  return { id: `ns-${row.id}`, noSnacks: true, employeeId: row.employee_id, employeeName: employee?.name || '', snackName: 'No Snacks', quantity: null, breakType: row.break_type, unitPrice: null, amount: null, day: row.day, takenAt: row.created_at };
+}
+
 function kolkataStart(date) {
   const [year, month, day] = date.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day) - 330 * 60 * 1000).toISOString();
@@ -197,6 +208,49 @@ export async function api(path, opts = {}) {
     if (profile.role === 'admin') return null;
     const row = unwrap(await client.from('employees').select('id,name,active,created_at').eq('id', profile.employee_id).single());
     return entityDto(row);
+  }
+
+  // Explicit "No Snacks" days (own rows only, enforced by RLS). Never touches snacks / snack_records.
+  if (parts[0] === 'no-snacks' && parts.length === 1 && method === 'GET') {
+    const p = request.searchParams;
+    let query = client.from('no_snack_days').select(noSnackSelection).order('day', { ascending: false }).order('id', { ascending: false });
+    if (p.has('date')) query = query.eq('day', p.get('date'));
+    else { if (p.has('from')) query = query.gte('day', p.get('from')); if (p.has('to')) query = query.lte('day', p.get('to')); }
+    const { data, error } = await query;
+    if (error && ['PGRST205', '42P01'].includes(error.code)) throw new Error(noSnacksMissing);
+    if (error && ['42703', 'PGRST204'].includes(error.code)) throw new Error(noSnacksNeedsBreak);
+    return unwrap({ data, error }, 'Could not load No Snacks records').map(noSnackDto);
+  }
+  if (parts[0] === 'no-snacks' && parts.length === 1 && method === 'POST') {
+    const { data, error } = await client.from('no_snack_days').insert({ employee_id: body.employeeId, break_type: body.breakType }).select(noSnackSelection).single();
+    if (error && ['PGRST205', '42P01'].includes(error.code)) throw new Error(noSnacksMissing);
+    if (error && ['42703', 'PGRST204'].includes(error.code)) throw new Error(noSnacksNeedsBreak);
+    if (error && /uk_no_snack_employee_day/.test(error.message || '')) throw new Error('You have already submitted No Snacks for this break today.');
+    return noSnackDto(unwrap({ data, error }, 'Could not save No Snacks'));
+  }
+
+  // ADMIN: change a No Snacks record's employee / date / break. The database enforces admin-only, duplicates and snack conflicts.
+  if (parts[0] === 'no-snacks' && parts[1] && method === 'PUT' && !Object.hasOwn(body, 'snackId')) {
+    const id = Number(String(parts[1]).replace(/^ns-/, ''));
+    const { data, error } = await client.from('no_snack_days').update({ employee_id: body.employeeId, day: body.day, break_type: body.breakType }).eq('id', id).select(noSnackSelection).maybeSingle();
+    if (error && error.code === '42501' && /permission denied for table/.test(error.message || '')) throw new Error(noSnacksAdminMissing);
+    if (error && /uk_no_snack_employee_day_break/.test(error.message || '')) throw new Error('A No Snacks record for that employee, date and break already exists.');
+    const row = unwrap({ data, error }, 'Could not update the No Snacks record');
+    if (!row) throw new Error('This No Snacks record could not be updated. Only an admin can edit it, or it no longer exists.');
+    return noSnackDto(row);
+  }
+  // ADMIN: delete exactly one No Snacks record (the database allows DELETE for admins only).
+  if (parts[0] === 'no-snacks' && parts[1] && method === 'DELETE') {
+    const deleted = unwrap(await client.from('no_snack_days').delete().eq('id', Number(String(parts[1]).replace(/^ns-/, ''))).select('id'), 'Could not delete the No Snacks record');
+    if (!deleted?.length) throw new Error('No No Snacks record was deleted. Only an admin can delete it, or it no longer exists.');
+    return null;
+  }
+  // Turn a No Snacks record into a normal snack record in ONE database transaction (RPC); nothing is changed unless it all succeeds.
+  if (parts[0] === 'no-snacks' && parts[1] && method === 'PUT') {
+    const result = await client.rpc('convert_no_snacks_to_snack', { p_no_snack_id: Number(String(parts[1]).replace(/^ns-/, '')), p_snack_id: Number(body.snackId), p_quantity: Number(body.quantity) });
+    if (result.error && ['PGRST202', '42883'].includes(result.error.code)) throw new Error(noSnacksEditMissing);
+    const newId = unwrap(result, 'Could not update No Snacks');
+    return recordDto(unwrap(await client.from('snack_records').select(recordSelection).eq('id', newId).single()));
   }
 
   if (parts[0] === 'records' && parts.length === 1 && method === 'GET') return getRecords(request.searchParams);
