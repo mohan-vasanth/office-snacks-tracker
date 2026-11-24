@@ -10,3 +10,11 @@
 ## Backup
 
 Use Supabase backups/PITR or scheduled `pg_dump` backups. Encrypt backup files, apply retention, and test restores into a separate database. Do not store backups in the public web directory. Preserve `employees`, `snacks`, and `snack_records` together so foreign keys remain intact.
+
+## Progressive Web App (PWA)
+
+- The frontend ships a manifest, icons and a service worker (`frontend/public/`). `npm run build` stamps `dist/sw.js` with a content-derived version and precache list; no extra deploy step is needed.
+- **HTTPS is required** (localhost is exempt) for installation and the service worker.
+- Serve `sw.js` and `index.html` with `Cache-Control: no-cache` so updates are detected promptly; hashed files under `assets/` can be cached long-term.
+- The worker only caches same-origin static files. Supabase requests are never intercepted or cached. Data changes are online-only; the app shows an offline banner and does not queue writes.
+- Regenerate icons with `npm run icons`; run `npm run build && npm run test:pwa` to verify.

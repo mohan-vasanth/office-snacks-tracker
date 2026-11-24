@@ -1,0 +1,23 @@
+{
+  "id": "./",
+  "name": "Office Snacks Tracker",
+  "short_name": "Snacks Tracker",
+  "description": "Record and manage office tea-break snacks.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#172554",
+  "background_color": "#f8fafc",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "screenshots/desktop.png", "sizes": "1365x768", "type": "image/png", "form_factor": "wide", "label": "Dashboard on desktop" },
+    { "src": "screenshots/mobile.png", "sizes": "390x844", "type": "image/png", "label": "Dashboard on mobile" }
+  ]
+}
