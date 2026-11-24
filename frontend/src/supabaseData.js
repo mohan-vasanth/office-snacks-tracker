@@ -220,7 +220,8 @@ export async function api(path, opts = {}) {
     let unitPrice = current.unit_price;
     if (Number(current.snack_id) !== Number(body.snackId) || unitPrice == null) unitPrice = unwrap(await client.from('snacks').select('unit_price').eq('id', Number(body.snackId)).single()).unit_price;
     const breakType = Object.prototype.hasOwnProperty.call(body, 'breakType') ? body.breakType : current.break_type;
-    const row = unwrap(await client.from('snack_records').update({ employee_id: body.employeeId, snack_id: body.snackId, quantity: body.quantity, break_type: breakType, unit_price: unitPrice }).eq('id', Number(parts[1])).select(recordSelection).single());
+    const row = unwrap(await client.from('snack_records').update({ employee_id: body.employeeId, snack_id: body.snackId, quantity: body.quantity, break_type: breakType, unit_price: unitPrice }).eq('id', Number(parts[1])).select(recordSelection).maybeSingle());
+    if (!row) throw new Error('This snack record could not be updated. You can only edit your own records.');
     return recordDto(row);
   }
   if (parts[0] === 'records' && parts[1] && method === 'DELETE') {

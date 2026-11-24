@@ -83,14 +83,35 @@ describe('USER', () => {
     await screen.findByText('My records');
     expect(screen.queryByText('Total employees')).toBeNull();
   });
-  it('Snack History has no Edit/Delete/CSV/PDF controls', async () => {
+  it('Snack History has Edit (own rows) but no Delete/CSV/PDF controls, and Update saves via PUT without a break type', async () => {
+    const rec = { id: 7, employeeId: 1, employeeName: 'Asha', snackId: 1, snackName: 'Tea', quantity: 2, breakType: 'MORNING', unitPrice: 10, amount: 20, takenAt: new Date().toISOString() };
+    api.mockImplementation(async (path, opts) => {
+      if (path.startsWith('/records') && opts?.method === 'PUT') return { ...rec, ...JSON.parse(opts.body) };
+      if (path.startsWith('/records')) return [rec];
+      if (path === '/snacks') return [{ id: 1, name: 'Tea', active: true, unitPrice: 10 }, { id: 2, name: 'Biscuit', active: true, unitPrice: 25 }];
+      if (path === '/employees') return [{ id: 1, name: 'Asha', active: true }];
+      return defaultApi(path, opts);
+    });
     await signInAs(user);
     await waitFor(() => expect(navNames().length).toBe(3));
     fireEvent.click(within(document.querySelector('nav')).getByText('Snack History'));
     await screen.findByText('Snack records');
     expect(screen.queryByText('Export CSV')).toBeNull();
     expect(screen.queryByText('Download PDF')).toBeNull();
-    expect(screen.queryByText('ACTION')).toBeNull();
+    expect(screen.queryByText('Delete')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    const modal = document.querySelector('.edit-modal');
+    expect(modal.querySelector('select').value).toBe('1');
+    expect(modal.querySelector('input[type=number]').value).toBe('2');
+    expect(within(modal).queryByText('Break type')).toBeNull();
+    fireEvent.change(modal.querySelector('select'), { target: { value: '2' } });
+    fireEvent.change(modal.querySelector('input[type=number]'), { target: { value: '3' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Update' }));
+    await screen.findByText('Snack record updated.');
+    const put = api.mock.calls.find(c => c[1]?.method === 'PUT');
+    expect(put[0]).toBe('/records/7');
+    expect(JSON.parse(put[1].body)).toEqual({ employeeId: 1, snackId: 2, quantity: 3 });
+    expect(api.mock.calls.filter(c => c[1]?.method === 'POST').length).toBe(0);
   });
   it('the ?view=report deep link does not open Reports for a USER', async () => {
     window.history.replaceState({}, '', '/?view=report');
