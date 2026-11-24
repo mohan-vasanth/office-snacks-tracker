@@ -2176,3 +2176,68 @@ describe('USER Dashboard date rules (Record today, View for past dates)', () => 
     expect(dateInput().value).toBe(todayStr);
   });
 });
+
+// ---- The 30-second background refresh must not disturb what the user is doing ----
+describe('Background refresh keeps the screen state', () => {
+  const names = { 1: 'Asha', 2: 'Ravi', 3: 'Meera' };
+  const callCount = (p) => api.mock.calls.filter(c => c[0] === p || String(c[0]).startsWith(p)).length;
+
+  it("ADMIN Take Snacks: a refresh reloads the lists but keeps the selected employee and break (the form is not cleared)", async () => {
+    api.mockImplementation(async (path, opts) => {
+      if (path === '/employees') return Object.entries(names).map(([id, name]) => ({ id: Number(id), name, active: true }));
+      if (path === '/snacks') return [{ id: 1, name: 'Tea', active: true, unitPrice: 10 }];
+      if (path.startsWith('/no-snacks') || path.startsWith('/records')) return [];
+      return defaultApi(path, opts);
+    });
+    await signInAs(admin);
+    await waitFor(() => expect(navNames().length).toBe(8));
+    goTo('Take Snacks');
+    await waitFor(() => expect(screen.getByLabelText('Employee').options.length).toBe(4));
+    fireEvent.change(screen.getByLabelText('Employee'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('Break type'), { target: { value: 'EVENING' } });
+    const before = callCount('/employees');
+    fireEvent.click(screen.getByTitle('Refresh'));                      // same counter the 30 s timer bumps
+    await waitFor(() => expect(callCount('/employees')).toBeGreaterThan(before));
+    await waitFor(() => expect(screen.getByLabelText('Employee').options.length).toBe(4));
+    expect(screen.getByLabelText('Employee').value).toBe('2');
+    expect(screen.getByLabelText('Break type').value).toBe('EVENING');
+  });
+
+  it('Month Records: a refresh reloads quietly - no "Loading records…" flash and the page number is kept', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ id: 100 + i, employeeId: 1, employeeName: 'Asha', snackId: 1, snackName: `Snack${i}`, quantity: 1, breakType: 'MORNING', unitPrice: 10, amount: 10, takenAt: `${todayStr}T10:${String(i).padStart(2, '0')}:00+05:30` }));
+    api.mockImplementation(async (path, opts) => {
+      if (path.startsWith('/no-snacks')) return [];
+      if (path.startsWith('/records') && !opts?.method) return many;
+      return defaultApi(path, opts);
+    });
+    await signInAs(admin);
+    await waitFor(() => expect(navNames()).toContain('Month Records'));
+    goTo('Month Records');
+    await screen.findByText(/Page 1 of 2/);
+    fireEvent.click(document.querySelectorAll('.pagination .icon-btn')[1]);
+    await screen.findByText(/Page 2 of 2/);
+    const before = callCount('/records');
+    fireEvent.click(screen.getByTitle('Refresh'));
+    expect(screen.queryByText('Loading records…')).toBeNull();          // no flash of the loading state
+    await waitFor(() => expect(callCount('/records')).toBeGreaterThan(before));
+    await waitFor(() => expect(screen.getByText(/Page 2 of 2/)).toBeTruthy());   // still page 2
+  });
+
+  it('Month Records: changing the MONTH still shows the loading state and returns to page 1', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ id: 100 + i, employeeId: 1, employeeName: 'Asha', snackId: 1, snackName: `Snack${i}`, quantity: 1, breakType: 'MORNING', unitPrice: 10, amount: 10, takenAt: `${todayStr}T10:${String(i).padStart(2, '0')}:00+05:30` }));
+    api.mockImplementation(async (path, opts) => {
+      if (path.startsWith('/no-snacks')) return [];
+      if (path.startsWith('/records') && !opts?.method) return many;
+      return defaultApi(path, opts);
+    });
+    await signInAs(admin);
+    await waitFor(() => expect(navNames()).toContain('Month Records'));
+    goTo('Month Records');
+    await screen.findByText(/Page 1 of 2/);
+    fireEvent.click(document.querySelectorAll('.pagination .icon-btn')[1]);
+    await screen.findByText(/Page 2 of 2/);
+    fireEvent.change(document.querySelector('input[type=month]'), { target: { value: '2026-10' } });
+    expect(screen.queryByText('Loading records…')).not.toBeNull();       // a real change of month still shows loading
+    await screen.findByText(/Page 1 of 2/);                              // and starts at page 1
+  });
+});
