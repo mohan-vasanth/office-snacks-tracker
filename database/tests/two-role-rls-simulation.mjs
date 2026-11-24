@@ -512,6 +512,66 @@ await db8.exec(adminEditMigration);
 const reAdmin = await upd8(ADMIN, aM8, `day='${k8.y}'`);
 ok('Admin edit migration re-applies after its rollback and edits work again', !reAdmin.error && reAdmin.rows.length === 1, reAdmin.error || '');
 
+// ----- Path 9: ADMIN submits No Snacks for any employee (2026-11-29) -----
+const adminSubmitMigration = readFileSync(`${repo}/database/migrations/2026-11-29-no-snacks-admin-submit.sql`, 'utf8');
+const adminSubmitRollback = readFileSync(`${repo}/database/migrations/2026-11-29-no-snacks-admin-submit.rollback.sql`, 'utf8');
+const db9 = new PGlite();
+await db9.exec(bootstrap); await db9.exec(newSetup); await db9.exec(migration); await db9.exec(editMigration);
+await db9.exec(noSnacksMigration); await db9.exec(breakMigration); await db9.exec(editNsMigration); await db9.exec(adminEditMigration);
+await db9.exec(adminSubmitMigration); await db9.exec(adminSubmitMigration);
+const e9A = (await db9.query(`SELECT id FROM public.employees WHERE name='Supabase Test Employee'`)).rows[0].id;
+const e9B = (await db9.query(`SELECT id FROM public.employees WHERE name='Supabase Sample Employee 02'`)).rows[0].id;
+const e9C = (await db9.query(`SELECT id FROM public.employees WHERE name='Supabase Sample Employee 03'`)).rows[0].id;
+const tea9 = (await db9.query(`SELECT id FROM public.snacks WHERE name='Supabase Test Tea'`)).rows[0].id;
+await db9.exec(`INSERT INTO auth.users (id,email,encrypted_password) VALUES ('${ADMIN}','admin@x.test','h1'),('${A}','a@x.test','h2'),('${B}','b@x.test','h3');
+  INSERT INTO public.user_profiles (user_id, role, employee_id) VALUES ('${ADMIN}','admin',NULL),('${A}','user',${e9A}),('${B}','user',${e9B});
+  DELETE FROM public.snack_records;`);
+ok('Admin-submit migration applies and is idempotent (second run succeeds)', true);
+const today9 = (await db9.query(`SELECT (now() AT TIME ZONE 'Asia/Kolkata')::date::text d`)).rows[0].d;
+const ns9 = (who, emp, brk) => as(db9, who, `INSERT INTO public.no_snack_days (employee_id, break_type) VALUES (${emp}, '${brk}') RETURNING employee_id, break_type, day::text d`);
+const c9 = await counts(db9);
+const adM9 = await ns9(ADMIN, e9A, 'MORNING'), adE9 = await ns9(ADMIN, e9A, 'EVENING'), adB9 = await ns9(ADMIN, e9B, 'MORNING');
+ok('ADMIN can submit Morning and Evening No Snacks (independent) and for different employees; the day is forced to today',
+  !adM9.error && !adE9.error && !adB9.error && adM9.rows[0].d === today9 && adE9.rows[0].break_type === 'EVENING' && String(adB9.rows[0].employee_id) === String(e9B), adM9.error || adE9.error || adB9.error || '');
+const adDup9 = await ns9(ADMIN, e9A, 'MORNING');
+ok('ADMIN duplicate (same employee, date, break) is rejected', /uk_no_snack_employee_day_break/.test(adDup9.error || ''), adDup9.error || '');
+await db9.exec(`INSERT INTO public.snack_records (employee_id,snack_id,quantity,break_type,unit_price) VALUES (${e9C},${tea9},1,'EVENING',10)`);
+const adClash9 = await ns9(ADMIN, e9C, 'EVENING'), adOther9 = await ns9(ADMIN, e9C, 'MORNING');
+ok('ADMIN No Snacks is refused where snacks already exist for that employee/date/break, but the other break is allowed', /Snacks are already recorded for this break/.test(adClash9.error || '') && !adOther9.error, `${adClash9.error} | ${adOther9.error || 'morning ok'}`);
+const adSnackBlocked9 = await as(db9, ADMIN, `INSERT INTO public.snack_records (employee_id,snack_id,quantity,break_type,unit_price) VALUES (${e9A},${tea9},1,'MORNING',10)`);
+const adSnackFree9 = await as(db9, ADMIN, `INSERT INTO public.snack_records (employee_id,snack_id,quantity,break_type,unit_price) VALUES (${e9B},${tea9},2,'EVENING',10) RETURNING quantity, unit_price`);
+ok('ADMIN snack entry is refused only for a break that already has No Snacks; otherwise it works exactly as before (quantity and price kept)',
+  /No Snacks was already submitted/.test(adSnackBlocked9.error || '') && !adSnackFree9.error && adSnackFree9.rows[0].quantity === 2 && Number(adSnackFree9.rows[0].unit_price) === 10, `${adSnackBlocked9.error} | ${adSnackFree9.error || 'free ok'}`);
+await db9.exec(`DELETE FROM public.no_snack_days WHERE employee_id=${e9A} AND break_type='MORNING'`); // free the slot so the USER path is really exercised
+const aSelf9 = await ns9(A, e9A, 'MORNING');
+ok('USER can still submit No Snacks for themselves (own employee, day forced to today)', !aSelf9.error && String(aSelf9.rows[0].employee_id) === String(e9A) && aSelf9.rows[0].d === today9, aSelf9.error || '');
+const bSelf9 = await ns9(B, e9B, 'EVENING');
+const aForB9 = await ns9(A, e9B, 'EVENING'), bForA9 = await ns9(B, e9A, 'MORNING');
+ok('USER cannot submit No Snacks for another employee (RLS), either direction', !!aForB9.error && !!bForA9.error && /row-level security|already|uk_no_snack/.test(aForB9.error), `${aForB9.error} | ${bForA9.error}`);
+await db9.exec(`DELETE FROM public.no_snack_days WHERE employee_id=${e9C}`);
+const uClean9 = await ns9(A, e9C, 'MORNING');
+ok('USER cannot submit for another employee even when there is no conflict (rule is RLS, not just duplicates)', /row-level security/.test(uClean9.error || ''), uClean9.error || '');
+const anon9 = await as(db9, 'anon', `INSERT INTO public.no_snack_days (employee_id, break_type) VALUES (${e9A}, 'MORNING')`);
+ok('anon cannot insert No Snacks', !!anon9.error, anon9.error);
+await db9.exec(`UPDATE public.user_profiles SET active = FALSE WHERE user_id='${ADMIN}'`);
+const inactiveAdmin9 = await ns9(ADMIN, e9C, 'MORNING');
+await db9.exec(`UPDATE public.user_profiles SET active = TRUE WHERE user_id='${ADMIN}'`);
+ok('An inactive admin cannot submit No Snacks', !!inactiveAdmin9.error, inactiveAdmin9.error);
+const adEdit9 = await as(db9, ADMIN, `UPDATE public.no_snack_days SET day=(now() AT TIME ZONE 'Asia/Kolkata')::date - 1 WHERE employee_id=${e9B} AND break_type='MORNING' RETURNING id`);
+const adDel9 = await as(db9, ADMIN, `DELETE FROM public.no_snack_days WHERE employee_id=${e9A} AND break_type='EVENING'`);
+const adSees9 = await as(db9, ADMIN, `SELECT count(*)::int n FROM public.no_snack_days`);
+ok('ADMIN can still view, edit and delete the No Snacks records (including ones admins created)', !adEdit9.error && adDel9.affected >= 1 && adSees9.rows[0].n >= 2, adEdit9.error || '');
+const c9b = await counts(db9);
+ok('No Snacks submissions create no snack master data (snacks unchanged; only the 2 snack records that were inserted)', c9b.snacks === c9.snacks && c9b.records === c9.records + 2, JSON.stringify([c9, c9b]));
+const c9r0 = await counts(db9);
+await db9.exec(adminSubmitRollback);
+const rbIns9 = await ns9(ADMIN, e9C, 'EVENING');
+const rbSnack9 = await as(db9, ADMIN, `INSERT INTO public.snack_records (employee_id,snack_id,quantity,break_type,unit_price) VALUES (${e9A},${tea9},1,'MORNING',10)`);
+ok('Admin-submit rollback: admin No Snacks inserts are refused again, admin snack entry skips the guard again, data intact', !!rbIns9.error && !rbSnack9.error && JSON.stringify(c9r0) === JSON.stringify({ ...(await counts(db9)), records: (await counts(db9)).records - 1 }), `${rbIns9.error}`);
+await db9.exec(adminSubmitMigration);
+const reIns9 = await ns9(ADMIN, e9C, 'EVENING');
+ok('Admin-submit migration re-applies after its rollback and admin submission works again', !reIns9.error || /uk_no_snack|already recorded/.test(reIns9.error), reIns9.error || 'ok');
+
 console.log(results.join('\n'));
 console.log(`\n${pass} passed, ${fail} failed (LOCAL PGlite simulation, not live Supabase)`);
 process.exit(fail ? 1 : 0);

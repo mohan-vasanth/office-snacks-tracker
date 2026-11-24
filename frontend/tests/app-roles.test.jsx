@@ -863,14 +863,14 @@ describe('Employee selection and No Snacks', () => {
     expect(screen.getByRole('option', { name: 'No Snacks' }).value).toBe('NO_SNACKS');
     expect(screen.getByRole('option', { name: 'Biscuit' })).toBeTruthy();
   });
-  it('ADMIN never gets the No Snacks option', async () => {
+  it('ADMIN also gets the No Snacks option (alongside the employee dropdown)', async () => {
     api.mockImplementation(async (path, opts) => (path === '/snacks' ? [{ id: 1, name: 'Tea', active: true, unitPrice: 10 }] : path === '/employees' ? [{ id: 1, name: 'Asha', active: true }] : defaultApi(path, opts)));
     await signInAs(admin);
     await waitFor(() => expect(navNames().length).toBe(8));
     goTo('Take Snacks');
     await screen.findByRole('option', { name: 'Tea' });
-    expect(screen.queryByRole('option', { name: 'No Snacks' })).toBeNull();
-    expect(api.mock.calls.some(c => String(c[0]).startsWith('/no-snacks'))).toBe(false);
+    expect(screen.getByRole('option', { name: 'No Snacks' }).value).toBe('NO_SNACKS');
+    expect(screen.getByLabelText('Employee')).toBeTruthy();
   });
 });
 
@@ -1689,5 +1689,138 @@ describe('ADMIN Month Records: No Snacks Records', () => {
     expect(panel()).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+  });
+});
+
+// ---- ADMIN submits No Snacks for any employee ----
+describe('ADMIN submits No Snacks', () => {
+  const names = { 1: 'Asha', 2: 'Ravi', 3: 'Meera' };
+  const nsOf = (id, employeeId, breakType) => ({ noSnacks: true, id: `ns-${id}`, employeeId, employeeName: names[employeeId], snackName: 'No Snacks', quantity: null, unitPrice: null, amount: null, breakType, day: todayStr, takenAt: `${todayStr}T09:30:00+05:30` });
+  const teaFor = (id, employeeId, breakType) => ({ id, employeeId, employeeName: names[employeeId], snackId: 1, snackName: 'Tea', quantity: 1, breakType, unitPrice: 10, amount: 10, takenAt: `${todayStr}T10:00:00+05:30` });
+  // stateful stand-in for the database (also lets Reports / Month Records show what the admin submitted)
+  const server = ({ ns = [], recs = [], failPost } = {}) => {
+    const st = { ns: [...ns], recs: [...recs], posts: [], batches: [], nextId: 50 };
+    api.mockImplementation(async (path, opts) => {
+      if (path === '/employees') return Object.entries(names).map(([id, name]) => ({ id: Number(id), name, active: true }));
+      if (path === '/snacks') return [{ id: 1, name: 'Tea', active: true, unitPrice: 10 }];
+      if (path === '/no-snacks' && opts?.method === 'POST') {
+        const body = JSON.parse(opts.body); st.posts.push(body);
+        if (failPost) throw new Error(failPost);
+        const row = nsOf(st.nextId++, body.employeeId, body.breakType); st.ns.push(row); return row;
+      }
+      if (path === '/records/batch' && opts?.method === 'POST') {
+        const body = JSON.parse(opts.body); st.batches.push(body);
+        const made = body.items.map(i => teaFor(st.nextId++, body.employeeId, body.breakType)); st.recs.push(...made); return made;
+      }
+      if (path.startsWith('/no-snacks') && !opts?.method) { const q = new URL(path, 'http://x').searchParams; return st.ns.filter(n => q.has('date') ? n.day === q.get('date') : n.day >= q.get('from') && n.day <= q.get('to')); }
+      if (path.startsWith('/records') && !opts?.method) return st.recs.filter(r => inRange(r, new URL(path, 'http://x').searchParams));
+      return defaultApi(path, opts);
+    });
+    return st;
+  };
+  const openTake = async () => { await signInAs(admin); await waitFor(() => expect(navNames().length).toBe(8)); goTo('Take Snacks'); await screen.findByRole('option', { name: 'No Snacks' }); await waitFor(() => expect(screen.getByLabelText('Employee').options.length).toBe(4)); return document.querySelector('.entry-form'); };
+  const fill = (form, { emp, brk, snack }) => {
+    fireEvent.change(screen.getByLabelText('Employee'), { target: { value: String(emp) } });
+    fireEvent.change(screen.getByLabelText('Break type'), { target: { value: brk } });
+    fireEvent.change(form.querySelector('.snack-item-row select'), { target: { value: snack } });
+  };
+  const submit = (form) => fireEvent.submit(form);
+  const goTab = (name) => fireEvent.click(within(document.querySelector('nav')).getByText(name));
+
+  it('the admin sees the No Snacks option and the employee dropdown (select employee, break, No Snacks)', async () => {
+    server();
+    await openTake();
+    expect(screen.getByRole('option', { name: 'No Snacks' }).value).toBe('NO_SNACKS');
+    expect(screen.getByLabelText('Employee').value).toBe('');
+    expect(screen.getByRole('option', { name: 'Ravi' })).toBeTruthy();
+  });
+  it('Morning No Snacks for an employee is saved for that employee and break only', async () => {
+    const st = server();
+    const form = await openTake();
+    fill(form, { emp: 2, brk: 'MORNING', snack: 'NO_SNACKS' });
+    submit(form);
+    await screen.findByText('No Snacks recorded for the Morning break.');
+    expect(st.posts).toEqual([{ employeeId: 2, breakType: 'MORNING' }]);
+    expect(st.batches.length).toBe(0);
+  });
+  it('Evening No Snacks for a different employee, and both breaks / several employees are independent', async () => {
+    const st = server();
+    const form = await openTake();
+    fill(form, { emp: 3, brk: 'EVENING', snack: 'NO_SNACKS' }); submit(form);
+    await waitFor(() => expect(st.posts.length).toBe(1));
+    fill(form, { emp: 3, brk: 'MORNING', snack: 'NO_SNACKS' }); submit(form);
+    await waitFor(() => expect(st.posts.length).toBe(2));
+    fill(form, { emp: 2, brk: 'EVENING', snack: 'NO_SNACKS' }); submit(form);
+    await waitFor(() => expect(st.posts.length).toBe(3));
+    expect(st.posts).toEqual([{ employeeId: 3, breakType: 'EVENING' }, { employeeId: 3, breakType: 'MORNING' }, { employeeId: 2, breakType: 'EVENING' }]);
+  });
+  it('a duplicate is blocked only for the SELECTED employee and break (another employee is still allowed)', async () => {
+    const st = server({ ns: [nsOf(1, 2, 'MORNING')] });
+    const form = await openTake();
+    fill(form, { emp: 2, brk: 'MORNING', snack: 'NO_SNACKS' }); submit(form);
+    await screen.findByText('You have already submitted No Snacks for the Morning break today.');
+    expect(st.posts.length).toBe(0);
+    fill(form, { emp: 3, brk: 'MORNING', snack: 'NO_SNACKS' }); submit(form);
+    await waitFor(() => expect(st.posts).toEqual([{ employeeId: 3, breakType: 'MORNING' }]));
+  });
+  it("No Snacks is refused where THAT employee already has snacks for the break; the other break and other employees are fine", async () => {
+    const st = server({ recs: [teaFor(9, 2, 'MORNING')] });
+    const form = await openTake();
+    fill(form, { emp: 2, brk: 'MORNING', snack: 'NO_SNACKS' }); submit(form);
+    await screen.findByText('You have already recorded snacks for the Morning break today, so No Snacks cannot be submitted for it.');
+    expect(st.posts.length).toBe(0);
+    fill(form, { emp: 2, brk: 'EVENING', snack: 'NO_SNACKS' }); submit(form);
+    await waitFor(() => expect(st.posts.length).toBe(1));
+    fill(form, { emp: 3, brk: 'MORNING', snack: 'NO_SNACKS' }); submit(form);
+    await waitFor(() => expect(st.posts.length).toBe(2));
+  });
+  it('snacks are refused for an employee/break that already has No Snacks, otherwise normal submission is unchanged (batch POST, price/quantity untouched)', async () => {
+    const st = server({ ns: [nsOf(1, 2, 'MORNING')] });
+    const form = await openTake();
+    fill(form, { emp: 2, brk: 'MORNING', snack: '1' }); submit(form);
+    await screen.findByText('You have already submitted No Snacks for the Morning break today, so snacks cannot be added to it.');
+    expect(st.batches.length).toBe(0);
+    fill(form, { emp: 2, brk: 'EVENING', snack: '1' }); submit(form);
+    await screen.findByText('1 snack record saved.');
+    expect(st.batches).toEqual([{ employeeId: 2, breakType: 'EVENING', items: [{ snackId: 1, quantity: 1 }] }]);
+    expect(st.posts.length).toBe(0);
+  });
+  it('if Supabase refuses the insert (e.g. the migration is not installed) the real error shows and there is no success message', async () => {
+    const msg = 'Supabase denied this No Snacks entry. Users can submit only for themselves; admins need database/migrations/2026-11-29-no-snacks-admin-submit.sql run in the SQL Editor.';
+    const st = server({ failPost: msg });
+    const form = await openTake();
+    fill(form, { emp: 2, brk: 'MORNING', snack: 'NO_SNACKS' }); submit(form);
+    await screen.findByText(msg);
+    expect(screen.queryByText(/No Snacks recorded for/)).toBeNull();
+    expect(st.ns.length).toBe(0);
+  });
+  it("what the admin submitted shows up in Reports and in Month Records (with employee, date and break)", async () => {
+    const st = server();
+    const form = await openTake();
+    fill(form, { emp: 2, brk: 'MORNING', snack: 'NO_SNACKS' }); submit(form);
+    await screen.findByText('No Snacks recorded for the Morning break.');
+    goTab('Reports');
+    await waitFor(() => expect(document.querySelector('[data-testid="no-snacks-report"]')).not.toBeNull());
+    let cells = [...document.querySelectorAll('[data-testid="no-snacks-report"] tbody tr')].map(tr => [...tr.children].map(c => c.textContent));
+    expect(cells.length).toBe(1); expect(cells[0][0]).toBe('Ravi'); expect(cells[0].slice(2, 4)).toEqual(['MORNING', 'No Snacks']);
+    goTab('Month Records');
+    await waitFor(() => expect(document.querySelector('[data-testid="no-snacks-report"]')?.textContent).toContain('Ravi'));
+    expect(document.querySelector('[data-testid="no-snacks-report"] .count-pill').textContent).toBe('1');
+    expect(st.ns.length).toBe(1);
+  });
+  it('USER stays limited to themselves: no employee dropdown, and the request carries their own employee id', async () => {
+    const st = server();
+    await signInAs(user);
+    await waitFor(() => expect(navNames().length).toBe(4));
+    goTab('Take Snacks');
+    await screen.findByRole('option', { name: 'No Snacks' });
+    await waitFor(() => expect(document.querySelector('.own-employee b')?.textContent).toBe('Asha'));
+    expect(screen.queryByLabelText('Employee')).toBeNull();
+    const form = document.querySelector('.entry-form');
+    fireEvent.change(screen.getByLabelText('Break type'), { target: { value: 'EVENING' } });
+    fireEvent.change(form.querySelector('.snack-item-row select'), { target: { value: 'NO_SNACKS' } });
+    submit(form);
+    await screen.findByText('No Snacks recorded for the Evening break.');
+    expect(st.posts).toEqual([{ employeeId: 1, breakType: 'EVENING' }]);
   });
 });

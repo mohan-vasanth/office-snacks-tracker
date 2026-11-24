@@ -225,6 +225,7 @@ export async function api(path, opts = {}) {
     const { data, error } = await client.from('no_snack_days').insert({ employee_id: body.employeeId, break_type: body.breakType }).select(noSnackSelection).single();
     if (error && ['PGRST205', '42P01'].includes(error.code)) throw new Error(noSnacksMissing);
     if (error && ['42703', 'PGRST204'].includes(error.code)) throw new Error(noSnacksNeedsBreak);
+    if (error && error.code === '42501' && /office_no_snacks_insert_guard/.test(error.message || '')) throw new Error('Supabase denied this No Snacks entry. Users can submit only for themselves; admins need database/migrations/2026-11-29-no-snacks-admin-submit.sql run in the SQL Editor.');
     if (error && /uk_no_snack_employee_day/.test(error.message || '')) throw new Error('You have already submitted No Snacks for this break today.');
     return noSnackDto(unwrap({ data, error }, 'Could not save No Snacks'));
   }
