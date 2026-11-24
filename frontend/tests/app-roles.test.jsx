@@ -898,7 +898,8 @@ describe('No Snacks submission', () => {
     expect(form.querySelector('.snack-item-row input[type=number]').disabled).toBe(true);
     expect(screen.getByRole('button', { name: /Add another snack/ }).disabled).toBe(true);
     fireEvent.submit(form);
-    await screen.findByText('No Snacks recorded for the Morning break.');
+    await screen.findByText('No Snacks submitted successfully!');
+    await waitFor(() => expect(document.querySelector('.crumb + .slash + b')?.textContent).toBe('Dashboard'));
     expect(posts('/no-snacks').length).toBe(1);
     expect(JSON.parse(posts('/no-snacks')[0][1].body)).toEqual({ employeeId: 1, breakType: 'MORNING' });
     expect(posts('/records').length).toBe(0);
@@ -909,7 +910,8 @@ describe('No Snacks submission', () => {
     setBreak(form, 'EVENING');
     pick(form, 'NO_SNACKS');
     fireEvent.submit(form);
-    await screen.findByText('No Snacks recorded for the Evening break.');
+    await screen.findByText('No Snacks submitted successfully!');
+    await waitFor(() => expect(document.querySelector('.crumb + .slash + b')?.textContent).toBe('Dashboard'));
     expect(JSON.parse(posts('/no-snacks')[0][1].body)).toEqual({ employeeId: 1, breakType: 'EVENING' });
     expect(posts('/records').length).toBe(0);
   });
@@ -922,18 +924,20 @@ describe('No Snacks submission', () => {
     expect(posts('/no-snacks').length).toBe(0);
   });
   it('Morning and Evening No Snacks are independent on the same day; repeating the SAME break is blocked', async () => {
-    setup({ noToday: [nsRow] });
-    const form = await openTake();
-    setBreak(form, 'EVENING');
-    pick(form, 'NO_SNACKS');
-    fireEvent.submit(form);
-    await screen.findByText('No Snacks recorded for the Evening break.');
-    expect(posts('/no-snacks').length).toBe(1);
+    setup({ noToday: [nsRow] });                       // Morning already submitted today
+    let form = await openTake();
     setBreak(form, 'MORNING');
     pick(form, 'NO_SNACKS');
-    fireEvent.submit(form);
+    fireEvent.submit(form);                            // same break again -> refused, user stays here
     await screen.findByText('You have already submitted No Snacks for the Morning break today.');
+    expect(posts('/no-snacks').length).toBe(0);
+    expect(document.querySelector('.crumb + .slash + b').textContent).toBe('Take Snacks');
+    setBreak(form, 'EVENING');                         // the other break is independent -> accepted
+    pick(form, 'NO_SNACKS');
+    fireEvent.submit(form);
+    await screen.findByText('No Snacks submitted successfully!');
     expect(posts('/no-snacks').length).toBe(1);
+    expect(JSON.parse(posts('/no-snacks')[0][1].body)).toEqual({ employeeId: 1, breakType: 'EVENING' });
   });
   it('a repeated Evening No Snacks is blocked too (nothing posted)', async () => {
     setup({ noToday: [nsEvening] });
@@ -954,7 +958,7 @@ describe('No Snacks submission', () => {
     expect(posts('/no-snacks').length).toBe(0);
     setBreak(form, 'EVENING');
     fireEvent.submit(form);
-    await screen.findByText('No Snacks recorded for the Evening break.');
+    await screen.findByText('No Snacks submitted successfully!');
     expect(posts('/no-snacks').length).toBe(1);
   });
   it('after a Morning No Snacks, Morning snacks are blocked but Evening snacks save normally', async () => {
@@ -967,7 +971,7 @@ describe('No Snacks submission', () => {
     expect(posts('/records').length).toBe(0);
     setBreak(form, 'EVENING');
     fireEvent.submit(form);
-    await screen.findByText('1 snack record saved.');
+    await screen.findByText('Snack submitted successfully!');
     expect(posts('/records/batch').length).toBe(1);
     expect(JSON.parse(posts('/records/batch')[0][1].body).breakType).toBe('EVENING');
     expect(posts('/no-snacks').length).toBe(0);
@@ -992,7 +996,8 @@ describe('No Snacks submission', () => {
     pick(form, '1');
     fireEvent.change(form.querySelector('select'), { target: { value: 'MORNING' } });
     fireEvent.submit(form);
-    await screen.findByText('1 snack record saved.');
+    await screen.findByText('Snack submitted successfully!');
+    await waitFor(() => expect(document.querySelector('.crumb + .slash + b')?.textContent).toBe('Dashboard'));
     expect(posts('/records/batch').length).toBe(1);
     expect(posts('/no-snacks').length).toBe(0);
   });
@@ -1820,7 +1825,354 @@ describe('ADMIN submits No Snacks', () => {
     fireEvent.change(screen.getByLabelText('Break type'), { target: { value: 'EVENING' } });
     fireEvent.change(form.querySelector('.snack-item-row select'), { target: { value: 'NO_SNACKS' } });
     submit(form);
-    await screen.findByText('No Snacks recorded for the Evening break.');
+    await screen.findByText('No Snacks submitted successfully!');
     expect(st.posts).toEqual([{ employeeId: 1, breakType: 'EVENING' }]);
+  });
+});
+
+// ---- USER: "No Snacks" filter in Snack History; success message + Dashboard after a normal submission ----
+describe('USER No Snacks filter and post-submit navigation', () => {
+  const nsBase = { noSnacks: true, employeeId: 1, employeeName: 'Asha', snackName: 'No Snacks', quantity: null, unitPrice: null, amount: null };
+  const ns = (id, breakType, day) => ({ ...nsBase, id, breakType, day, takenAt: `${day}T09:30:00+05:30` });
+  const tea = (id, day, breakType = 'MORNING') => ({ id, employeeId: 1, employeeName: 'Asha', snackId: 1, snackName: 'Tea', quantity: 2, breakType, unitPrice: 10, amount: 20, takenAt: `${day}T10:00:00+05:30` });
+  const store = [ns('ns-1', 'MORNING', todayStr), ns('ns-2', 'EVENING', todayStr), ns('ns-3', 'EVENING', yesterdayStr)];
+  const recs = [tea(1, todayStr), tea(2, yesterdayStr, 'EVENING')];
+  const histApi = () => api.mockImplementation(async (path, opts) => {
+    if (path === '/snacks') return [{ id: 1, name: 'Tea', active: true, unitPrice: 10 }];
+    if (path.startsWith('/no-snacks') && !opts?.method) { const q = new URL(path, 'http://x').searchParams; return store.filter(n => n.day === q.get('date')); }
+    if (path.startsWith('/records') && !opts?.method) return recs.filter(r => inRange(r, new URL(path, 'http://x').searchParams));
+    return defaultApi(path, opts);
+  });
+  const body = () => [...document.querySelectorAll('.table-wrap tbody')].pop();
+  const snackFilter = () => screen.getByLabelText('Snack');
+  const openHistory = async () => { await signInAs(user); await waitFor(() => expect(navNames().length).toBe(4)); goTo('Snack History'); await waitFor(() => expect(body()?.textContent).toContain('Tea')); };
+
+  it('the Snack filter offers "No Snacks" to a USER; choosing it shows only their own No Snacks (date + break), no normal records or snack totals', async () => {
+    histApi(); await openHistory();
+    expect(within(snackFilter()).getByRole('option', { name: 'No Snacks' }).value).toBe('NO_SNACKS');
+    fireEvent.change(snackFilter(), { target: { value: 'NO_SNACKS' } });
+    await waitFor(() => expect(body().querySelectorAll('tr').length).toBe(2));
+    const rows = [...body().querySelectorAll('tr')].map(tr => [...tr.children].map(c => c.textContent));
+    expect(rows.every(c => c[1] === 'Asha' && c[2] === 'No Snacks')).toBe(true);
+    expect(rows.map(c => c[3]).sort()).toEqual(['EVENING', 'MORNING']);
+    expect(rows[0][7]).toMatch(/2026/);
+    expect(body().textContent).not.toContain('Tea');
+    expect(screen.queryByText('Snack totals by employee')).toBeNull();
+    expect(api.mock.calls.map(c => c[0]).some(p => /snackId=NO_SNACKS|snackId=NaN/.test(p))).toBe(false);
+  });
+  it('it works with the Break and Date filters (and a real snack filter / "All snacks" restore the normal view)', async () => {
+    histApi(); await openHistory();
+    fireEvent.change(snackFilter(), { target: { value: 'NO_SNACKS' } });
+    await waitFor(() => expect(body().querySelectorAll('tr').length).toBe(2));
+    fireEvent.change(screen.getByLabelText('Break'), { target: { value: 'MORNING' } });
+    await waitFor(() => expect(body().querySelectorAll('tr').length).toBe(1));
+    expect(body().textContent).toContain('MORNING'); expect(body().textContent).not.toContain('EVENING');
+    fireEvent.change(screen.getByLabelText('Break'), { target: { value: 'ALL' } });
+    fireEvent.change(document.querySelector('input[type=date]'), { target: { value: yesterdayStr } });
+    await waitFor(() => expect(body().querySelectorAll('tr').length).toBe(1));
+    expect(body().textContent).toContain('EVENING');
+    expect(body().textContent).not.toContain('YesterdayTea');
+    fireEvent.change(snackFilter(), { target: { value: '' } });
+    await waitFor(() => expect(body().textContent).toContain('Tea'));
+    expect(body().textContent).toContain('No Snacks');
+    fireEvent.change(snackFilter(), { target: { value: '1' } });
+    await waitFor(() => expect(body().textContent).not.toContain('No Snacks'));
+    expect(api.mock.calls.map(c => c[0])).toContain(`/records?date=${yesterdayStr}&snackId=1`);
+  });
+  it('with no No Snacks records the filter shows a clear empty state', async () => {
+    histApi(); await openHistory();
+    fireEvent.change(snackFilter(), { target: { value: 'NO_SNACKS' } });
+    await waitFor(() => expect(body().querySelectorAll('tr').length).toBe(2));
+    fireEvent.change(document.querySelector('input[type=date]'), { target: { value: '2026-01-02' } });
+    await screen.findByText('You have no No Snacks records for the selected date and break.');
+    expect(body().querySelectorAll('tr').length).toBe(0);
+  });
+  it('ADMIN Snack History has no No Snacks filter option and is unchanged', async () => {
+    histApi();
+    await signInAs(admin);
+    await waitFor(() => expect(navNames()).toContain('Snack History'));
+    goTo('Snack History');
+    await screen.findByText('Snack records');
+    expect(within(snackFilter()).queryByRole('option', { name: 'No Snacks' })).toBeNull();
+    expect(api.mock.calls.some(c => String(c[0]).startsWith('/no-snacks'))).toBe(false);
+  });
+
+  const crumb = () => document.querySelector('.crumb + .slash + b')?.textContent;
+  const takeApi = ({ failBatch } = {}) => api.mockImplementation(async (path, opts) => {
+    if (path === '/snacks') return [{ id: 1, name: 'Tea', active: true, unitPrice: 10 }];
+    if (path === '/records/batch' && opts?.method === 'POST') { if (failBatch) throw new Error(failBatch); return [tea(5, todayStr)]; }
+    if (path.startsWith('/no-snacks') && !opts?.method) return [];
+    if (path.startsWith('/records') && !opts?.method) return [];
+    return defaultApi(path, opts);
+  });
+  const prepare = async () => { await signInAs(user); await waitFor(() => expect(navNames().length).toBe(4)); goTo('Take Snacks'); await screen.findByRole('option', { name: 'Tea' }); await waitFor(() => expect(document.querySelector('.own-employee b')?.textContent).toBe('Asha')); const form = document.querySelector('.entry-form'); fireEvent.change(screen.getByLabelText('Break type'), { target: { value: 'MORNING' } }); fireEvent.change(form.querySelector('.snack-item-row select'), { target: { value: '1' } }); return form; };
+
+  it('after Supabase confirms a normal snack, the USER sees "Snack submitted successfully!" and lands on the Dashboard', async () => {
+    takeApi();
+    const form = await prepare();
+    expect(crumb()).toBe('Take Snacks');
+    fireEvent.submit(form);
+    await screen.findByText('Snack submitted successfully!');
+    await waitFor(() => expect(crumb()).toBe('Dashboard'));
+    expect(screen.getByRole('heading', { name: "Today's Snacks" })).toBeTruthy();
+    expect(api.mock.calls.filter(c => c[0] === '/records/batch').length).toBe(1);
+  });
+  it('a failed submission shows the real error and the USER stays on Take Snacks (no success message, no navigation)', async () => {
+    takeApi({ failBatch: 'Supabase denied this action.' });
+    const form = await prepare();
+    fireEvent.submit(form);
+    await screen.findByText('Supabase denied this action.');
+    expect(screen.queryByText('Snack submitted successfully!')).toBeNull();
+    expect(crumb()).toBe('Take Snacks');
+  });
+  it('double-submitting while the request is in flight sends only ONE request', async () => {
+    let release; const gate = new Promise(r => { release = r; });
+    api.mockImplementation(async (path, opts) => {
+      if (path === '/snacks') return [{ id: 1, name: 'Tea', active: true, unitPrice: 10 }];
+      if (path === '/records/batch' && opts?.method === 'POST') { await gate; return [tea(5, todayStr)]; }
+      if (path.startsWith('/no-snacks') || path.startsWith('/records')) return [];
+      return defaultApi(path, opts);
+    });
+    const form = await prepare();
+    fireEvent.submit(form); fireEvent.submit(form); fireEvent.submit(form);
+    await waitFor(() => expect(screen.getByRole('button', { name: /Saving/ }).disabled).toBe(true));
+    release();
+    await screen.findByText('Snack submitted successfully!');
+    expect(api.mock.calls.filter(c => c[0] === '/records/batch').length).toBe(1);
+  });
+  it('ADMIN submission is unchanged: the original message and no navigation', async () => {
+    api.mockImplementation(async (path, opts) => {
+      if (path === '/snacks') return [{ id: 1, name: 'Tea', active: true, unitPrice: 10 }];
+      if (path === '/employees') return [{ id: 1, name: 'Asha', active: true }];
+      if (path === '/records/batch' && opts?.method === 'POST') return [tea(5, todayStr)];
+      if (path.startsWith('/no-snacks') || path.startsWith('/records')) return [];
+      return defaultApi(path, opts);
+    });
+    await signInAs(admin);
+    await waitFor(() => expect(navNames().length).toBe(8));
+    goTo('Take Snacks');
+    await screen.findByRole('option', { name: 'Tea' });
+    const form = document.querySelector('.entry-form');
+    fireEvent.change(screen.getByLabelText('Employee'), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText('Break type'), { target: { value: 'EVENING' } });
+    fireEvent.change(form.querySelector('.snack-item-row select'), { target: { value: '1' } });
+    fireEvent.submit(form);
+    await screen.findByText('1 snack record saved.');
+    expect(crumb()).toBe('Take Snacks');
+    expect(screen.queryByText('Snack submitted successfully!')).toBeNull();
+  });
+});
+
+// ---- USER No Snacks: success toast + Dashboard, toast persistence, failure stays, duplicate clicks ----
+describe('USER No Snacks submission flow', () => {
+  const crumb = () => document.querySelector('.crumb + .slash + b')?.textContent;
+  const nsRow = { id: 'ns-7', noSnacks: true, employeeId: 1, employeeName: 'Asha', snackName: 'No Snacks', quantity: null, unitPrice: null, amount: null, breakType: 'MORNING', day: todayStr, takenAt: `${todayStr}T09:30:00+05:30` };
+  const mockApi = ({ failPost, gate } = {}) => api.mockImplementation(async (path, opts) => {
+    if (path === '/snacks') return [{ id: 1, name: 'Tea', active: true, unitPrice: 10 }];
+    if (path === '/no-snacks' && opts?.method === 'POST') { if (gate) await gate; if (failPost) throw new Error(failPost); return nsRow; }
+    if (path.startsWith('/no-snacks') || path.startsWith('/records')) return [];
+    return defaultApi(path, opts);
+  });
+  const prepare = async () => {
+    await signInAs(user);
+    await waitFor(() => expect(navNames().length).toBe(4));
+    goTo('Take Snacks');
+    await screen.findByRole('option', { name: 'No Snacks' });
+    await waitFor(() => expect(document.querySelector('.own-employee b')?.textContent).toBe('Asha'));
+    const form = document.querySelector('.entry-form');
+    fireEvent.change(screen.getByLabelText('Break type'), { target: { value: 'MORNING' } });
+    fireEvent.change(form.querySelector('.snack-item-row select'), { target: { value: 'NO_SNACKS' } });
+    return form;
+  };
+  const posts = () => api.mock.calls.filter(c => c[0] === '/no-snacks' && c[1]?.method === 'POST');
+
+  it('after Supabase confirms the insert: toast "No Snacks submitted successfully!" and the USER lands on the Dashboard', async () => {
+    mockApi();
+    const form = await prepare();
+    expect(crumb()).toBe('Take Snacks');
+    fireEvent.submit(form);
+    await screen.findByText('No Snacks submitted successfully!');
+    await waitFor(() => expect(crumb()).toBe('Dashboard'));
+    expect(JSON.parse(posts()[0][1].body)).toEqual({ employeeId: 1, breakType: 'MORNING' });
+    expect(screen.queryByText('No Snacks recorded for the Morning break.')).toBeNull();
+  });
+  it('the toast stays visible on the Dashboard after navigation (app-level toast, ~3 s)', async () => {
+    mockApi();
+    const form = await prepare();
+    fireEvent.submit(form);
+    await waitFor(() => expect(crumb()).toBe('Dashboard'));
+    expect(screen.getByRole('heading', { name: "Today's Snacks" })).toBeTruthy();
+    expect(document.querySelector('.toast:not(.error)')?.textContent).toContain('No Snacks submitted successfully!');
+    await new Promise(r => setTimeout(r, 400));          // still there a moment later, on the Dashboard
+    expect(crumb()).toBe('Dashboard');
+    expect(document.querySelector('.toast:not(.error)')?.textContent).toContain('No Snacks submitted successfully!');
+  });
+  it('a failed submission shows the real error, no success toast, no navigation: the USER stays on Take Snacks', async () => {
+    mockApi({ failPost: 'Supabase denied this action.' });
+    const form = await prepare();
+    fireEvent.submit(form);
+    await screen.findByText('Supabase denied this action.');
+    expect(screen.queryByText('No Snacks submitted successfully!')).toBeNull();
+    expect(crumb()).toBe('Take Snacks');
+    expect(document.querySelector('.entry-form')).not.toBeNull();
+  });
+  it('double-clicking while the request is processing sends only ONE insert and the button is disabled', async () => {
+    let release; const gate = new Promise(r => { release = r; });
+    mockApi({ gate });
+    const form = await prepare();
+    fireEvent.submit(form); fireEvent.submit(form); fireEvent.submit(form);
+    await waitFor(() => expect(screen.getByRole('button', { name: /Saving/ }).disabled).toBe(true));
+    expect(posts().length).toBe(1);
+    expect(crumb()).toBe('Take Snacks');                 // not navigated before Supabase confirms
+    release();
+    await screen.findByText('No Snacks submitted successfully!');
+    await waitFor(() => expect(crumb()).toBe('Dashboard'));
+    expect(posts().length).toBe(1);
+  });
+  it('ADMIN No Snacks submission is unchanged: original message, stays on Take Snacks', async () => {
+    api.mockImplementation(async (path, opts) => {
+      if (path === '/snacks') return [{ id: 1, name: 'Tea', active: true, unitPrice: 10 }];
+      if (path === '/employees') return [{ id: 1, name: 'Asha', active: true }, { id: 2, name: 'Ravi', active: true }];
+      if (path === '/no-snacks' && opts?.method === 'POST') return { ...nsRow, employeeId: 2, employeeName: 'Ravi' };
+      if (path.startsWith('/no-snacks') || path.startsWith('/records')) return [];
+      return defaultApi(path, opts);
+    });
+    await signInAs(admin);
+    await waitFor(() => expect(navNames().length).toBe(8));
+    goTo('Take Snacks');
+    await screen.findByRole('option', { name: 'No Snacks' });
+    const form = document.querySelector('.entry-form');
+    fireEvent.change(screen.getByLabelText('Employee'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('Break type'), { target: { value: 'MORNING' } });
+    fireEvent.change(form.querySelector('.snack-item-row select'), { target: { value: 'NO_SNACKS' } });
+    fireEvent.submit(form);
+    await screen.findByText('No Snacks recorded for the Morning break.');
+    expect(crumb()).toBe('Take Snacks');
+    expect(screen.queryByText('No Snacks submitted successfully!')).toBeNull();
+  });
+  it('the normal snack flow is unchanged for a USER ("Snack submitted successfully!" and Dashboard)', async () => {
+    api.mockImplementation(async (path, opts) => {
+      if (path === '/snacks') return [{ id: 1, name: 'Tea', active: true, unitPrice: 10 }];
+      if (path === '/records/batch' && opts?.method === 'POST') return [{ id: 9, employeeId: 1, employeeName: 'Asha', snackId: 1, snackName: 'Tea', quantity: 1, breakType: 'MORNING', unitPrice: 10, amount: 10, takenAt: `${todayStr}T10:00:00+05:30` }];
+      if (path.startsWith('/no-snacks') || path.startsWith('/records')) return [];
+      return defaultApi(path, opts);
+    });
+    const form = await (async () => { await signInAs(user); await waitFor(() => expect(navNames().length).toBe(4)); goTo('Take Snacks'); await screen.findByRole('option', { name: 'Tea' }); await waitFor(() => expect(document.querySelector('.own-employee b')?.textContent).toBe('Asha')); const f = document.querySelector('.entry-form'); fireEvent.change(screen.getByLabelText('Break type'), { target: { value: 'MORNING' } }); fireEvent.change(f.querySelector('.snack-item-row select'), { target: { value: '1' } }); return f; })();
+    fireEvent.submit(form);
+    await screen.findByText('Snack submitted successfully!');
+    await waitFor(() => expect(crumb()).toBe('Dashboard'));
+    expect(screen.queryByText('No Snacks submitted successfully!')).toBeNull();
+  });
+});
+
+// ---- USER Dashboard: date-based Record / View ----
+describe('USER Dashboard date rules (Record today, View for past dates)', () => {
+  const crumb = () => document.querySelector('.crumb + .slash + b')?.textContent;
+  const tea = (id, day, snackName, breakType) => ({ id, employeeId: 1, employeeName: 'Asha', snackId: id, snackName, quantity: 1, breakType, unitPrice: 10, amount: 10, takenAt: `${day}T10:00:00+05:30` });
+  const nsOf = (id, day, breakType) => ({ noSnacks: true, id, employeeId: 1, employeeName: 'Asha', snackName: 'No Snacks', quantity: null, unitPrice: null, amount: null, breakType, day, takenAt: `${day}T16:30:00+05:30` });
+  const recs = [tea(1, todayStr, 'TodayTea', 'MORNING'), tea(2, yesterdayStr, 'YesterdayVada', 'MORNING'), tea(3, '2026-10-05', 'OctSamosa', 'EVENING')];
+  const nss = [nsOf('ns-1', todayStr, 'EVENING'), nsOf('ns-2', yesterdayStr, 'EVENING')];
+  const mock = () => api.mockImplementation(async (path, opts) => {
+    if (path === '/snacks') return [{ id: 1, name: 'Tea', active: true, unitPrice: 10 }];
+    if (path.startsWith('/no-snacks') && !opts?.method) { const q = new URL(path, 'http://x').searchParams; return nss.filter(n => n.day === q.get('date')); }
+    if (path.startsWith('/records') && !opts?.method) return recs.filter(r => inRange(r, new URL(path, 'http://x').searchParams));
+    return defaultApi(path, opts);
+  });
+  const record = () => screen.queryByRole('button', { name: /Record a snack/ });
+  const view = () => screen.queryByRole('button', { name: 'View' });
+  const body = () => [...document.querySelectorAll('.table-wrap tbody')].pop();
+  const dateInput = () => document.querySelector('input[type=date]');
+
+  it('Today: heading, records and the Record option are available; there is no View button', async () => {
+    mock(); await signInAs(user);
+    await screen.findByText(/TodayTea/);
+    expect(screen.getByRole('heading', { name: "Today's Snacks" })).toBeTruthy();
+    expect(record()).not.toBeNull(); expect(view()).toBeNull();
+    fireEvent.click(record());
+    await waitFor(() => expect(crumb()).toBe('Take Snacks'));
+  });
+  it("Yesterday: only yesterday's records, the Record option is gone, and a View button is shown instead", async () => {
+    mock(); await signInAs(user);
+    await screen.findByText(/TodayTea/);
+    fireEvent.click(screen.getByRole('button', { name: 'Yesterday' }));
+    await screen.findByText(/YesterdayVada/);
+    expect(screen.getByRole('heading', { name: "Yesterday's Snacks" })).toBeTruthy();
+    expect(screen.queryByText(/TodayTea/)).toBeNull();
+    expect(record()).toBeNull(); expect(view()).not.toBeNull();
+  });
+  it("View opens Snack History for THAT date: yesterday's snacks with their breaks plus No Snacks, nothing from today, no Edit", async () => {
+    mock(); await signInAs(user);
+    await screen.findByText(/TodayTea/);
+    fireEvent.click(screen.getByRole('button', { name: 'Yesterday' }));
+    await screen.findByText(/YesterdayVada/);
+    fireEvent.click(view());
+    await waitFor(() => expect(crumb()).toBe('Snack History'));
+    expect(dateInput().value).toBe(yesterdayStr);
+    await waitFor(() => expect(body()?.querySelectorAll('tr').length).toBe(2));
+    const rows = [...body().querySelectorAll('tr')].map(tr => [...tr.children].map(c => c.textContent));
+    const vada = rows.find(c => c[2] === 'YesterdayVada'), none = rows.find(c => c[2] === 'No Snacks');
+    expect(vada[3]).toBe('MORNING'); expect(none[3]).toBe('EVENING');
+    expect(body().textContent).not.toContain('TodayTea');
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(api.mock.calls.map(c => c[0])).toContain(`/records?date=${yesterdayStr}`);
+    expect(api.mock.calls.map(c => c[0])).toContain(`/no-snacks?date=${yesterdayStr}`);
+  });
+  it('a custom past date works the same way: no Record, View opens that exact date', async () => {
+    mock(); await signInAs(user);
+    await screen.findByText(/TodayTea/);
+    fireEvent.click(screen.getByRole('button', { name: 'Custom date' }));
+    fireEvent.change(screen.getByLabelText('Custom date'), { target: { value: '2026-10-05' } });
+    await screen.findByText(/OctSamosa/);
+    expect(record()).toBeNull();
+    fireEvent.click(view());
+    await waitFor(() => expect(crumb()).toBe('Snack History'));
+    expect(dateInput().value).toBe('2026-10-05');
+    await waitFor(() => expect(body()?.textContent).toContain('OctSamosa'));
+    expect(body().textContent).not.toContain('TodayTea');
+    expect(body().textContent).toContain('EVENING');
+  });
+  it('a future date offers neither Record nor View, and explains why', async () => {
+    mock(); await signInAs(user);
+    await screen.findByText(/TodayTea/);
+    fireEvent.click(screen.getByRole('button', { name: 'Custom date' }));
+    fireEvent.change(screen.getByLabelText('Custom date'), { target: { value: '2999-01-01' } });
+    await screen.findByText('Snacks cannot be recorded for a future date.');
+    expect(record()).toBeNull(); expect(view()).toBeNull();
+  });
+  it('"View all" now carries the selected date for a USER (and opens today when today is selected)', async () => {
+    mock(); await signInAs(user);
+    await screen.findByText(/TodayTea/);
+    fireEvent.click(screen.getByRole('button', { name: /View all/ }));
+    await waitFor(() => expect(crumb()).toBe('Snack History'));
+    expect(dateInput().value).toBe(todayStr);
+    goTo('Dashboard');
+    await screen.findByText(/TodayTea/);
+    fireEvent.click(screen.getByRole('button', { name: 'Yesterday' }));
+    await screen.findByText(/YesterdayVada/);
+    fireEvent.click(screen.getByRole('button', { name: /View all/ }));
+    await waitFor(() => expect(crumb()).toBe('Snack History'));
+    expect(dateInput().value).toBe(yesterdayStr);
+  });
+  it('opening Snack History from the menu afterwards starts on today again (the View date is not remembered)', async () => {
+    mock(); await signInAs(user);
+    await screen.findByText(/TodayTea/);
+    fireEvent.click(screen.getByRole('button', { name: 'Yesterday' }));
+    await screen.findByText(/YesterdayVada/);
+    fireEvent.click(view());
+    await waitFor(() => expect(dateInput()?.value).toBe(yesterdayStr));
+    goTo('Dashboard'); await screen.findByText(/TodayTea/);
+    goTo('Snack History');
+    await waitFor(() => expect(dateInput().value).toBe(todayStr));
+  });
+  it('ADMIN Dashboard is unchanged: Record stays available (also for another date), there is no View button, View all opens today', async () => {
+    mock(); await signInAs(admin);
+    await screen.findByText('Total employees');
+    expect(record()).not.toBeNull(); expect(view()).toBeNull();
+    fireEvent.change(document.querySelector('.date-filter input'), { target: { value: yesterdayStr } });
+    await waitFor(() => expect(screen.getByText(/Quantity taken on/).textContent).toContain(yesterdayStr));
+    expect(record()).not.toBeNull(); expect(view()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /View all/ }));
+    await waitFor(() => expect(crumb()).toBe('Snack History'));
+    expect(dateInput().value).toBe(todayStr);
   });
 });
