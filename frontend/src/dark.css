@@ -1,0 +1,110 @@
+/* generated dark overrides */
+html[data-theme=dark]{color-scheme:dark;--dark:#1e3a8a;--line:#273449;--pale:#172036;--muted:#94a3b8}
+html[data-theme=dark] body,html[data-theme=dark] #root{background:#0b1220;color:#e5e7eb}
+html[data-theme=dark] .sidebar{background:#111b2e}
+html[data-theme=dark] .sidebar nav button:hover{background:#0b1220}
+html[data-theme=dark] .avatar{color:#5eead4}
+html[data-theme=dark] .topbar{background:#111b2e}
+html[data-theme=dark] .date-chip{color:#94a3b8;background:#111b2e}
+html[data-theme=dark] .date-filter input,html[data-theme=dark] .filters input,html[data-theme=dark] .filters select{background:#111b2e;color:#b6c4d2}
+html[data-theme=dark] .stat-card,html[data-theme=dark] .panel{background:#111b2e;border:1px solid #273449}
+html[data-theme=dark] .recent-row{border-bottom:1px solid #1c2740}
+html[data-theme=dark] .empty{color:#94a3b8}
+html[data-theme=dark] .empty-mark{background:#1c2740}
+html[data-theme=dark] .entry-form>label,html[data-theme=dark] .add-form label,html[data-theme=dark] .filters label,html[data-theme=dark] .login-card label{color:#a8b8c8}
+html[data-theme=dark] .entry-form select,html[data-theme=dark] .entry-form input,html[data-theme=dark] .add-form input{border:1px solid #273449;background:#111b2e;color:#c7d3df}
+html[data-theme=dark] .qty-input{border:1px solid #273449}
+html[data-theme=dark] .add-form{background:#0f1a2c}
+html[data-theme=dark] .search input{color:#b6c4d2}
+html[data-theme=dark] th{color:#94a3b8}
+html[data-theme=dark] td{border-bottom:1px solid #1c2740}
+html[data-theme=dark] td b{color:#b6c4d2}
+html[data-theme=dark] .report-filters{background:#0f1a2c}
+html[data-theme=dark] .report-note{color:#94a3b8}
+html[data-theme=dark] .login{background:#1c2740}
+html[data-theme=dark] .login-card{background:#111b2e}
+html[data-theme=dark] .delete-button{color:#f87171}
+html[data-theme=dark] .snack-items-heading{color:#a8b8c8}
+html[data-theme=dark] .snack-item-row{background:#0f1a2c}
+html[data-theme=dark] .snack-item-row label select,html[data-theme=dark] .snack-item-row label input{border:1px solid #273449;background:#111b2e;color:#c7d3df}
+html[data-theme=dark] .remove-snack{color:#f87171}
+html[data-theme=dark] .edit-modal>label{color:#a8b8c8}
+html[data-theme=dark] .edit-modal select,html[data-theme=dark] .edit-modal input{border:1px solid #273449;background:#111b2e;color:#c7d3df}
+html[data-theme=dark] .history-summary{border:1px solid #273449}
+html[data-theme=dark]{color:#e5e7eb;background:#0b1220}
+html[data-theme=dark] body{background:#0b1220;color:#e5e7eb}
+html[data-theme=dark] .sidebar{background:#111b2e;border-color:#273449}
+html[data-theme=dark] .brand{color:#dbeafe}
+html[data-theme=dark] .brand small,html[data-theme=dark] .nav-caption,html[data-theme=dark] .eyebrow{color:#94a3b8}
+html[data-theme=dark] .sidebar nav button{color:#cbd5e1}
+html[data-theme=dark] .sidebar nav button:hover{background:#1c2740}
+html[data-theme=dark] .sidebar nav button.active{background:#172036;color:#93c5fd}
+html[data-theme=dark] .topbar{border-color:#273449;color:#94a3b8}
+html[data-theme=dark] .topbar b{color:#dbeafe}
+html[data-theme=dark] .page-heading h1{color:#dbeafe}
+html[data-theme=dark] .page-heading p{color:#94a3b8}
+html[data-theme=dark] .eyebrow{color:#60a5fa}
+html[data-theme=dark] .date-chip,html[data-theme=dark] .stat-card,html[data-theme=dark] .panel{border-color:#273449}
+html[data-theme=dark] .stat-top{color:#94a3b8}
+html[data-theme=dark] .stat-icon,html[data-theme=dark] .panel-icon{background:#172036;color:#60a5fa}
+html[data-theme=dark] .stat-card strong{color:#dbeafe}
+html[data-theme=dark] .stat-card>small,html[data-theme=dark] .panel-head p,html[data-theme=dark] .manage-head p{color:#94a3b8}
+html[data-theme=dark] .panel h2,html[data-theme=dark] .manage-head h2{color:#e5e7eb}
+html[data-theme=dark] .rank-name,html[data-theme=dark] .recent-copy b{color:#cbd5e1}
+html[data-theme=dark] .rank-row>b{color:#dbeafe}
+html[data-theme=dark] .text-button{color:#60a5fa}
+html[data-theme=dark] .snack-avatar{background:#0f2f2c;color:#5eead4}
+html[data-theme=dark] .outline{border-color:#334155;color:#cbd5e1}
+html[data-theme=dark] .outline:hover{background:#0b1220}
+html[data-theme=dark] .stat-card:hover{border-color:#334155}
+html[data-theme=dark] .empty-mark{background:#1c2740;color:#94a3b8}
+html[data-theme=dark] .count-pill,html[data-theme=dark] .qty-pill{background:#172036;color:#93c5fd}
+html[data-theme=dark] .add-form,html[data-theme=dark] .report-filters{background:#0b1220;border:1px solid #273449}
+html[data-theme=dark] th{background:#0b1220;color:#94a3b8}
+html[data-theme=dark] td{color:#cbd5e1}
+html[data-theme=dark] td b{color:#e5e7eb}
+html[data-theme=dark] .status.off{background:#1c2740;color:#94a3b8}
+html[data-theme=dark] .row-button{color:#60a5fa}
+html[data-theme=dark] .delete-button{color:#f87171}
+html[data-theme=dark] .delete-button:hover{background:#3b1518}
+html[data-theme=dark] .entry-form select,html[data-theme=dark] .entry-form input,html[data-theme=dark] .add-form input,html[data-theme=dark] .edit-modal select,html[data-theme=dark] .edit-modal input{border-color:#334155;color:#e5e7eb}
+html[data-theme=dark] .captured{background:#0f2f2c;color:#5eead4}
+html[data-theme=dark] .captured small{color:#94a3b8}
+html[data-theme=dark] .login{background:radial-gradient(ellipse at 12% 8%,#dbeafe 0,transparent 35%),#0b1220}
+html[data-theme=dark] .login-card{border-color:#273449}
+html[data-theme=dark] .login-card h1{color:#dbeafe}
+html[data-theme=dark] .login-card input{border-color:#334155}
+html[data-theme=dark] .login-brand{color:#60a5fa}
+html[data-theme=dark] .error-box{background:#3b1518}
+html[data-theme=dark] .snack-item-row{background:#0b1220;border-color:#273449}
+html[data-theme=dark] .report-snack{background:#0b1220;border-color:#273449;color:#cbd5e1}
+html[data-theme=dark] .report-snack b{color:#5eead4}
+html[data-theme=dark] .break-summary-values small{color:#94a3b8}
+html[data-theme=dark] .break-summary-values b{color:#dbeafe}
+html[data-theme=dark] .break-badge.morning{background:#172036;color:#93c5fd}
+html[data-theme=dark] .break-badge.evening{background:#0f2f2c;color:#5eead4}
+html[data-theme=dark] .break-badge.legacy{background:#1c2740;color:#94a3b8}
+html[data-theme=dark] .break-mark{background:#172036;color:#60a5fa}
+html[data-theme=dark] .break-mark.evening{background:#0f2f2c;color:#5eead4}
+html[data-theme=dark] .password-field .eye-btn{color:#94a3b8}
+html[data-theme=dark] .password-field .eye-btn:hover{background:#1c2740;color:#e5e7eb}
+html[data-theme=dark] .user-email{color:#e5e7eb}
+html[data-theme=dark] .temp-password-value{color:#e5e7eb;background:#1c2740}
+html[data-theme=dark] .reveal-btn{color:#94a3b8}
+html[data-theme=dark] .reveal-btn:hover{background:#1c2740;color:#e5e7eb}
+html[data-theme=dark] .pwa-banner{border-bottom:1px solid #273449}
+html[data-theme=dark] .pwa-banner.update{background:#172036;color:#93c5fd}
+html[data-theme=dark] .pwa-install{background:#111b2e}
+html[data-theme=dark] .pwa-modal{background:#111b2e;color:#e5e7eb}
+html[data-theme=dark] .pwa-modal h3{color:#dbeafe}
+html[data-theme=dark] .quick-dates button{border:1px solid #334155;background:#111b2e;color:#cbd5e1}
+html[data-theme=dark] .quick-dates button.active{background:#172036;color:#93c5fd}
+html[data-theme=dark] .quick-dates input{border:1px solid #334155}
+html[data-theme=dark] .own-employee{color:#94a3b8}
+html[data-theme=dark] .own-employee b{color:#dbeafe}
+html[data-theme=dark] .muted-note{color:#94a3b8}
+html[data-theme=dark] .welcome-btn{background:#111b2e}
+html[data-theme=dark] .welcome-banner{background:#1e3a8a}html[data-theme=dark] .welcome-banner h2{color:#fff}html[data-theme=dark] .welcome-btn{background:#fff;color:#172554}html[data-theme=dark] input,html[data-theme=dark] select,html[data-theme=dark] textarea{background:#0f1a2c;color:#e5e7eb;border-color:#273449}
+html[data-theme=dark] .view-tabs button{color:#94a3b8}html[data-theme=dark] .view-tabs button.active{color:#5eead4}
+html[data-theme=dark] .invoice{background:#0f1a2c;color:#e5e7eb}html[data-theme=dark] .invoice-summary div{background:#111b2e;border-color:#273449;border-left-color:var(--green)}
+html[data-theme=dark] .invoice-summary b,html[data-theme=dark] .invoice h3{color:#e5e7eb}html[data-theme=dark] .invoice-note,html[data-theme=dark] .invoice-summary span{color:#94a3b8}
