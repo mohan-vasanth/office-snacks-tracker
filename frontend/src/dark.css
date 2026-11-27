@@ -105,6 +105,7 @@ html[data-theme=dark] .own-employee b{color:#dbeafe}
 html[data-theme=dark] .muted-note{color:#94a3b8}
 html[data-theme=dark] .welcome-btn{background:#111b2e}
 html[data-theme=dark] .welcome-banner{background:#1e3a8a}html[data-theme=dark] .welcome-banner h2{color:#fff}html[data-theme=dark] .welcome-btn{background:#fff;color:#172554}html[data-theme=dark] input,html[data-theme=dark] select,html[data-theme=dark] textarea{background:#0f1a2c;color:#e5e7eb;border-color:#273449}
-html[data-theme=dark] .view-tabs button{color:#94a3b8}html[data-theme=dark] .view-tabs button.active{color:#5eead4}
-html[data-theme=dark] .invoice{background:#0f1a2c;color:#e5e7eb}html[data-theme=dark] .invoice-summary div{background:#111b2e;border-color:#273449;border-left-color:var(--green)}
-html[data-theme=dark] .invoice-summary b,html[data-theme=dark] .invoice h3{color:#e5e7eb}html[data-theme=dark] .invoice-note,html[data-theme=dark] .invoice-summary span{color:#94a3b8}
+html[data-theme=dark] tfoot td{background:#111b2e;border-top-color:#273449}html[data-theme=dark] .unpriced-note{color:#94a3b8}
+html[data-theme=dark] .crumb{color:#94a3b8}
+html[data-theme=dark] .user-badge b,html[data-theme=dark] .rank-name,html[data-theme=dark] .recent-copy b,html[data-theme=dark] .report-snack{color:#e5e7eb}
+html[data-theme=dark] .report-snack b{color:#5eead4}

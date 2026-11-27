@@ -70,38 +70,162 @@ async function openMonth(profile) {
   await waitFor(() => { if (!document.querySelector('nav')) throw new Error('nav not ready'); });
   const nav = document.querySelector('nav');
   fireEvent.click(within(nav).getByRole('button', { name: /month records/i }));
-  await screen.findByRole('tab', { name: 'Total Amount Report' });
+  await screen.findByRole('combobox', { name: 'Report view' });
 }
 
-describe('Total Amount Report', () => {
-  it('admin: CSV stays, new tab + PDF buttons exist, totals use saved prices and exclude No Snacks', async () => {
-    mockData([REC(1, 'Asha', 1, 'Tea', 10, 2, 10), REC(2, 'Asha', 1, 'Samosa', 11, 3, 15.5), REC(3, 'Ravi', 2, 'Tea', 10, 1, 12)], [{ id: 'ns-1', noSnacks: true, employeeId: 3, employeeName: 'Meena', snackName: 'No Snacks', quantity: null, unitPrice: null, amount: null, takenAt: '2026-11-04T05:00:00Z', breakType: 'MORNING', day: '2026-11-04' }]);
+const ADMIN_ROWS = () => [REC(1, 'Asha', 1, 'Tea', 10, 2, 10), REC(2, 'Asha', 1, 'Samosa', 11, 3, 15.5), REC(3, 'Ravi', 2, 'Tea', 10, 1, 12)];
+const NS = [{ id: 'ns-1', noSnacks: true, employeeId: 3, employeeName: 'Meena', snackName: 'No Snacks', quantity: null, unitPrice: null, amount: null, takenAt: '2026-11-04T05:00:00Z', breakType: 'MORNING', day: '2026-11-04' }];
+
+describe('Month Records: single report dropdown', () => {
+  it('admin: one dropdown (Total Snacks List / User-wise List), old tabs and Total Amount report are gone, totals and CSV kept', async () => {
+    mockData(ADMIN_ROWS(), NS);
     await openMonth(admin);
+    const picker = screen.getByRole('combobox', { name: 'Report view' });
+    expect([...picker.options].map((o) => o.textContent)).toEqual(['Total Snacks List', 'User-wise List']);
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByTitle('Refresh')).toBeNull(); // top-bar refresh icon removed
+    expect(screen.queryByText('Total Amount Report')).toBeNull();
+    expect(screen.getByText('Known amount')).toBeTruthy(); // existing monthly totals kept
     expect(screen.getByRole('button', { name: /download csv/i })).toBeTruthy();
+    expect(document.querySelector('input[type=month]')).toBeTruthy(); // existing month filter kept
+    // default = all snack records (table), user-wise hidden
+    expect(screen.getAllByText('Asha').length).toBe(2);
+    expect(screen.getByText('Ravi')).toBeTruthy();
+    expect(screen.queryByText('Snack totals by employee')).toBeNull();
+  });
+  it('admin: User-wise List replaces the records table with one row per employee', async () => {
+    mockData(ADMIN_ROWS(), NS);
+    await openMonth(admin);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report view' }), { target: { value: 'users' } });
+    expect(screen.getByText('Snack totals by employee')).toBeTruthy();
+    expect(screen.getAllByText('Asha').length).toBe(1);
+    expect(screen.getByText('Ravi')).toBeTruthy();
+    expect(screen.queryByText('RECORD')).toBeNull(); // the records table header is not shown
+    expect(screen.getByText('6 total snacks')).toBeTruthy();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report view' }), { target: { value: 'all' } });
+    expect(screen.queryByText('Snack totals by employee')).toBeNull();
+    expect(screen.getAllByText('Asha').length).toBe(2);
+  });
+  it('admin: User-wise List shows each employee total amount (saved price x quantity) and a grand total; No Snacks excluded', async () => {
+    mockData([...ADMIN_ROWS(), REC(4, 'Ravi', 2, 'Vada', 12, 2, null)], NS);
+    await openMonth(admin);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report view' }), { target: { value: 'users' } });
+    expect(screen.getByText('TOTAL AMOUNT')).toBeTruthy();
+    // Asha: 2x10 + 3x15.5 = 66.50 ; Ravi: 1x12 = 12.00 (+1 record with no saved price) ; total 78.50
+    expect(screen.getByText('₹66.50')).toBeTruthy();
+    expect(screen.getAllByText('₹12.00').length).toBe(1);
+    expect(screen.getByText('Total')).toBeTruthy(); // admin keeps the Total row
+    expect(screen.getAllByText('₹78.50').length).toBe(2); // Known amount card + total row, same figure
+    expect(screen.getAllByText(/\+1 no price/).length).toBe(2); // Ravi row + total row
+    expect(screen.queryByText('Meena')).toBeNull();
+  });
+  it('admin: User-wise CSV / PDF buttons appear only while the User-wise List is selected; existing CSV and Invoice PDF stay', async () => {
+    mockData(ADMIN_ROWS(), NS);
+    await openMonth(admin);
+    expect(screen.queryByRole('button', { name: /user-wise csv/i })).toBeNull(); // Total Snacks List view
+    expect(screen.queryByRole('button', { name: /user-wise pdf/i })).toBeNull();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report view' }), { target: { value: 'users' } });
+    expect(screen.getByRole('button', { name: /user-wise csv/i }).disabled).toBe(false);
+    expect(screen.getByRole('button', { name: /user-wise pdf/i }).disabled).toBe(false);
+    expect(screen.getByRole('button', { name: /^download csv/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /download invoice pdf/i })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Monthly Records' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('tab', { name: 'Total Amount Report' }));
-    const inv = await screen.findByTestId('invoice-report');
-    expect(within(inv).getByText('MONTHLY SNACK EXPENSE REPORT')).toBeTruthy();
-    expect(within(inv).getAllByText('₹ 78.50').length).toBeGreaterThanOrEqual(2); // summary card + grand total
-    expect(within(inv).getAllByText('Asha').length).toBe(3); // 2 detail lines + 1 employee summary row
-    expect(within(inv).queryByText('Meena')).toBeNull();
-    expect(within(inv).getByText('₹ 66.50')).toBeTruthy(); // Asha total
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report view' }), { target: { value: 'all' } });
+    expect(screen.queryByRole('button', { name: /user-wise csv/i })).toBeNull();
   });
-  it('user: sees only the rows the API returns for them', async () => {
-    mockData([REC(1, 'Asha', 1, 'Tea', 10, 2, 10)]);
-    await openMonth(user);
-    fireEvent.click(screen.getByRole('tab', { name: 'Total Amount Report' }));
-    const inv = await screen.findByTestId('invoice-report');
-    expect(within(inv).queryByText('Ravi')).toBeNull();
-    expect(within(inv).getAllByText('₹ 20.00').length).toBeGreaterThanOrEqual(2);
-  });
-  it('empty month shows zero totals and an empty state', async () => {
+  it('admin: User-wise download buttons are disabled for an empty month', async () => {
     mockData([]);
     await openMonth(admin);
-    fireEvent.click(screen.getByRole('tab', { name: 'Total Amount Report' }));
-    const inv = await screen.findByTestId('invoice-report');
-    expect(within(inv).getAllByText('₹ 0.00').length).toBeGreaterThanOrEqual(2);
-    expect(within(inv).getAllByText(/Nothing recorded/i).length).toBeGreaterThanOrEqual(1);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report view' }), { target: { value: 'users' } });
+    expect(screen.getByRole('button', { name: /user-wise csv/i }).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: /user-wise pdf/i }).disabled).toBe(true);
+  });
+  it('user: never gets the User-wise download buttons', async () => {
+    mockData([REC(1, 'Asha', 1, 'Tea', 10, 2, 10)]);
+    await openMonth(user);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report view' }), { target: { value: 'users' } });
+    expect(screen.queryByRole('button', { name: /user-wise/i })).toBeNull();
+  });
+  it('user: gets the same dropdown over their own rows only', async () => {
+    mockData([REC(1, 'Asha', 1, 'Tea', 10, 2, 10)]);
+    await openMonth(user);
+    const picker = screen.getByRole('combobox', { name: 'Report view' });
+    expect([...picker.options].map((o) => o.textContent)).toEqual(['Total Snacks List', 'User-wise List']);
+    expect(screen.queryByText('Ravi')).toBeNull();
+    fireEvent.change(picker, { target: { value: 'users' } });
+    expect(screen.getByText('Snack totals by employee')).toBeTruthy();
+    expect(screen.queryByText('Ravi')).toBeNull();
+    expect(screen.getByText('TOTAL AMOUNT')).toBeTruthy(); // amount column shown
+    expect(screen.queryByText('Total')).toBeNull(); // no Total row for a user
+  });
+  it('user: Custom dates lets them pick From/To and requests exactly that range; invalid ranges are rejected', async () => {
+    mockData([REC(1, 'Asha', 1, 'Tea', 10, 2, 10)]);
+    await openMonth(user);
+    expect(screen.getByLabelText('Month')).toBeTruthy(); // default is still the month picker
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report period' }), { target: { value: 'custom' } });
+    expect(screen.queryByLabelText('Month')).toBeNull();
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-11-03' } });
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-11-05' } });
+    await waitFor(() => expect(api.mock.calls.some((c) => c[0] === '/records?from=2026-11-03&to=2026-11-05')).toBe(true));
+    await waitFor(() => expect(api.mock.calls.some((c) => c[0] === '/no-snacks?from=2026-11-03&to=2026-11-05')).toBe(true));
+    expect(screen.getByRole('heading', { name: /3 Nov 2026 . 5 Nov 2026/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /download csv/i })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Report view' })).toBeTruthy(); // report dropdown still works with a custom range
+    // From after To -> error, no request for that range
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-11-10' } });
+    expect(screen.getByText(/From must not be after To/)).toBeTruthy();
+    expect(api.mock.calls.some((c) => c[0] === '/records?from=2026-11-10&to=2026-11-05')).toBe(false);
+    // back to Month
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report period' }), { target: { value: 'month' } });
+    expect(screen.getByLabelText('Month')).toBeTruthy();
+  });
+  it('admin: no Period control on Month Records (admins keep the month picker; custom ranges live on Reports)', async () => {
+    mockData(ADMIN_ROWS(), NS);
+    await openMonth(admin);
+    expect(screen.queryByRole('combobox', { name: 'Report period' })).toBeNull();
+    expect(screen.getByLabelText('Month')).toBeTruthy();
+  });
+  it('empty month: both views show an empty state, no crash', async () => {
+    mockData([]);
+    await openMonth(admin);
+    expect(screen.getAllByText(/No records found for/i).length).toBeGreaterThanOrEqual(1);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report view' }), { target: { value: 'users' } });
+    expect(screen.getByText('Snack totals by employee')).toBeTruthy();
+    expect(screen.getByText('No totals for these filters.')).toBeTruthy();
+  });
+});
+
+describe('Snack History: user date range', () => {
+  async function openHistory(profile) {
+    await signInAs(profile);
+    await waitFor(() => { if (!document.querySelector('nav')) throw new Error('nav not ready'); });
+    fireEvent.click(within(document.querySelector('nav')).getByRole('button', { name: /snack history/i }));
+    await screen.findByText(/Your own snack records|Filter by date and break/);
+  }
+  it('user: Period = Date range shows From/To and requests exactly that range; single date stays the default', async () => {
+    mockData([REC(1, 'Asha', 1, 'Tea', 10, 2, 10)]);
+    await openHistory(user);
+    expect(screen.getByLabelText('Date')).toBeTruthy(); // default: single date
+    expect(api.mock.calls.some((c) => /^\/records\?date=\d{4}-\d{2}-\d{2}/.test(c[0]))).toBe(true);
+    fireEvent.change(screen.getByRole('combobox', { name: 'History period' }), { target: { value: 'range' } });
+    expect(screen.queryByLabelText('Date')).toBeNull();
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-11-03' } });
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-11-05' } });
+    await waitFor(() => expect(api.mock.calls.some((c) => c[0] === '/records?from=2026-11-03&to=2026-11-05')).toBe(true));
+    await waitFor(() => expect(api.mock.calls.some((c) => c[0] === '/no-snacks?from=2026-11-03&to=2026-11-05')).toBe(true));
+    // invalid: From after To -> error, nothing requested for it
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-11-10' } });
+    await screen.findByText(/From must not be after To/);
+    expect(api.mock.calls.some((c) => c[0] === '/records?from=2026-11-10&to=2026-11-05')).toBe(false);
+    // back to a single date
+    fireEvent.change(screen.getByRole('combobox', { name: 'History period' }), { target: { value: 'single' } });
+    expect(screen.getByLabelText('Date')).toBeTruthy();
+  });
+  it('admin: Snack History keeps the single Date filter (no Period control)', async () => {
+    mockData(ADMIN_ROWS(), NS);
+    await signInAs(admin);
+    await waitFor(() => { if (!document.querySelector('nav')) throw new Error('nav not ready'); });
+    fireEvent.click(within(document.querySelector('nav')).getByRole('button', { name: /snack history/i }));
+    await screen.findByLabelText('Date');
+    expect(screen.queryByRole('combobox', { name: 'History period' })).toBeNull();
   });
 });

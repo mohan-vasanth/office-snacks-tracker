@@ -41,6 +41,14 @@ const defaultApi = api.getMockImplementation(), defaultListUsers = listUsers.get
 
 const admin = { user_id: 'u1', role: 'admin', employee_id: null, active: true, must_change_password: false, displayName: '' };
 const user = { user_id: 'u2', role: 'user', employee_id: 1, active: true, must_change_password: false, displayName: 'Asha' };
+// The top-bar Refresh icon was removed; the app still reloads its data when the connection comes back.
+// Simulate that (offline -> online). By default wait until the user list is requested again; pass null to skip waiting.
+async function refreshApp(watch = listUsers) {
+  const before = watch ? watch.mock.calls.length : 0;
+  await act(async () => { window.dispatchEvent(new Event('offline')); });
+  await act(async () => { window.dispatchEvent(new Event('online')); });
+  if (watch) await waitFor(() => expect(watch.mock.calls.length).toBeGreaterThan(before));
+}
 const navNames = () => within(document.querySelector('nav')).getAllByRole('button').map(b => b.textContent.trim());
 
 async function signInAs(profile) {
@@ -241,7 +249,7 @@ describe('User Management: failure and empty states', () => {
     await openUserManagement();
     await waitFor(() => expect(firstOption()).toBe('Choose an employee'));
     listUsers.mockRejectedValue(new Error('network down'));
-    fireEvent.click(screen.getByTitle('Refresh'));
+    await refreshApp();
     await waitFor(() => expect(document.querySelector('.error-box')).not.toBeNull());
     expect(firstOption()).toBe('Choose an employee');
   });
@@ -600,31 +608,31 @@ describe('PASSWORD column: temporary passwords set in this session', () => {
   it('when the USER changes their own password (server now says must_change_password=false) the remembered password is cleared: "Set by user", and it never comes back', async () => {
     await createFirst();
     listUsers.mockResolvedValue([ROWS[0], { ...U1, must_change_password: false }]);
-    fireEvent.click(screen.getByTitle('Refresh'));
+    await refreshApp();
     await waitFor(() => expect(passwordCellOf('asha@x.com').textContent).toBe('Set by user'));
     expect(eyeOf('asha@x.com')).toBeNull(); expect(document.body.textContent).not.toContain(PW_A);
     listUsers.mockResolvedValue([ROWS[0], U1]);                                  // e.g. an admin reset flagged them again elsewhere
-    fireEvent.click(screen.getByTitle('Refresh'));
+    await refreshApp();
     await waitFor(() => expect(passwordCellOf('asha@x.com').textContent).toMatch(/^Hidden/));
     expect(eyeOf('asha@x.com')).toBeNull();                                      // the OLD password was really forgotten, not just hidden
   });
   it('a STALE user list (requested before the password was saved) can never purge a newer password', async () => {
     await startPasswordPage();
-    listUsers.mockResolvedValue([ROWS[0], U1]); fireEvent.click(screen.getByTitle('Refresh')); await screen.findByText('asha@x.com');
+    listUsers.mockResolvedValue([ROWS[0], U1]); await refreshApp(); await screen.findByText('asha@x.com');
     let releaseStale; const stale = new Promise(r => { releaseStale = r; });
-    listUsers.mockReturnValueOnce(stale); fireEvent.click(screen.getByTitle('Refresh'));            // a refresh that is still in flight...
+    listUsers.mockReturnValueOnce(stale); await refreshApp();            // a refresh that is still in flight...
     const spy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     adminUsers.mockResolvedValue({}); listUsers.mockResolvedValue([ROWS[0], U1]);
     fireEvent.click(within(rowOf('asha@x.com')).getByRole('button', { name: 'Reset password' }));   // ...while the admin resets Asha's password
     await screen.findByText('Password reset'); fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     await act(async () => { releaseStale([ROWS[0], { ...U1, must_change_password: false }]); });   // the OLD answer arrives late
-    listUsers.mockResolvedValue([ROWS[0], U1]); fireEvent.click(screen.getByTitle('Refresh'));
+    listUsers.mockResolvedValue([ROWS[0], U1]); await refreshApp();
     await waitFor(() => expect(eyeOf('asha@x.com')).not.toBeNull());                                // still remembered
     spy.mockRestore();
   });
 
   it('RESET PASSWORD remembers the generated password: the eye shows exactly what the one-time dialog showed', async () => {
-    await startPasswordPage(); listUsers.mockResolvedValue([ROWS[0], U1]); fireEvent.click(screen.getByTitle('Refresh')); await screen.findByText('asha@x.com');
+    await startPasswordPage(); listUsers.mockResolvedValue([ROWS[0], U1]); await refreshApp(); await screen.findByText('asha@x.com');
     expect(eyeOf('asha@x.com')).toBeNull();                                      // before: pending but unknown to this session
     const spy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(within(rowOf('asha@x.com')).getByRole('button', { name: 'Reset password' }));
@@ -636,7 +644,7 @@ describe('PASSWORD column: temporary passwords set in this session', () => {
     spy.mockRestore();
   });
   it('EDIT PASSWORD remembers the password the admin typed', async () => {
-    await startPasswordPage(); listUsers.mockResolvedValue([ROWS[0], U1]); fireEvent.click(screen.getByTitle('Refresh')); await screen.findByText('asha@x.com');
+    await startPasswordPage(); listUsers.mockResolvedValue([ROWS[0], U1]); await refreshApp(); await screen.findByText('asha@x.com');
     fireEvent.click(within(rowOf('asha@x.com')).getByRole('button', { name: 'Edit password' }));
     fillPw('Typed-By-Admin-77', 'Typed-By-Admin-77'); submitPw();
     await waitFor(() => expect(document.querySelector('.edit-modal')).toBeNull());
@@ -651,7 +659,7 @@ describe('PASSWORD column: temporary passwords set in this session', () => {
     fireEvent.change(createPwInput(), { target: { value: PW_A } });
     fireEvent.submit(document.querySelector('.add-form'));
     await waitFor(() => expect(toastText()).toMatch(/nope/));
-    listUsers.mockResolvedValue([ROWS[0], U1]); fireEvent.click(screen.getByTitle('Refresh')); await screen.findByText('asha@x.com');
+    listUsers.mockResolvedValue([ROWS[0], U1]); await refreshApp(); await screen.findByText('asha@x.com');
     expect(eyeOf('asha@x.com')).toBeNull();
     adminUsers.mockRejectedValueOnce(new Error('Resetting the password failed: weak'));
     fireEvent.click(within(rowOf('asha@x.com')).getByRole('button', { name: 'Edit password' })); fillPw(GOOD, GOOD); submitPw();
@@ -660,7 +668,7 @@ describe('PASSWORD column: temporary passwords set in this session', () => {
     expect(eyeOf('asha@x.com')).toBeNull();
   });
   it('a pending user this session knows nothing about shows "Hidden" + the explanation and NO eye; admins show a dash; finished users show "Set by user"', async () => {
-    await startPasswordPage(); listUsers.mockResolvedValue([ROWS[0], U1, { ...U2, must_change_password: false }]); fireEvent.click(screen.getByTitle('Refresh')); await screen.findByText('ravi@x.com');
+    await startPasswordPage(); listUsers.mockResolvedValue([ROWS[0], U1, { ...U2, must_change_password: false }]); await refreshApp(); await screen.findByText('ravi@x.com');
     expect(passwordCellOf('asha@x.com').textContent).toMatch(/^Hidden/); expect(eyeOf('asha@x.com')).toBeNull();
     expect(passwordCellOf('asha@x.com').querySelector('.pw-info').getAttribute('title')).toBe('Passwords are stored only as a hash by Supabase Auth and cannot be retrieved. Use Reset password to set a new one.');
     expect(passwordCellOf('ravi@x.com').textContent).toBe('Set by user'); expect(eyeOf('ravi@x.com')).toBeNull();
@@ -2196,7 +2204,7 @@ describe('Background refresh keeps the screen state', () => {
     fireEvent.change(screen.getByLabelText('Employee'), { target: { value: '2' } });
     fireEvent.change(screen.getByLabelText('Break type'), { target: { value: 'EVENING' } });
     const before = callCount('/employees');
-    fireEvent.click(screen.getByTitle('Refresh'));                      // same counter the 30 s timer bumps
+    await refreshApp(null);                      // same counter the 30 s timer bumps
     await waitFor(() => expect(callCount('/employees')).toBeGreaterThan(before));
     await waitFor(() => expect(screen.getByLabelText('Employee').options.length).toBe(4));
     expect(screen.getByLabelText('Employee').value).toBe('2');
@@ -2217,7 +2225,7 @@ describe('Background refresh keeps the screen state', () => {
     fireEvent.click(document.querySelectorAll('.pagination .icon-btn')[1]);
     await screen.findByText(/Page 2 of 2/);
     const before = callCount('/records');
-    fireEvent.click(screen.getByTitle('Refresh'));
+    await refreshApp(null);
     expect(screen.queryByText('Loading records…')).toBeNull();          // no flash of the loading state
     await waitFor(() => expect(callCount('/records')).toBeGreaterThan(before));
     await waitFor(() => expect(screen.getByText(/Page 2 of 2/)).toBeTruthy());   // still page 2

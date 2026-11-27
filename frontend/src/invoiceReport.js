@@ -164,3 +164,62 @@ export function buildInvoicePdf(JsPDF, { report, monthLabel, month, generatedOn 
   }
   return pdf;
 }
+
+// ---- User-wise List downloads (admin) -------------------------------------------------------------
+// `groups` come from groupRecordsByEmployee(): { name, snacks:[{name,quantity}], quantity, records, amount, unpricedRecords }
+const csvCell = (v) => { let t = String(v ?? ''); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return `"${t.replaceAll('"', '""')}"`; };
+const snackText = (g) => g.snacks.map((x) => `${x.name} x ${x.quantity}`).join('; ') || '-';
+
+export function userWiseTotals(groups) {
+  return {
+    quantity: groups.reduce((t, g) => t + g.quantity, 0),
+    records: groups.reduce((t, g) => t + g.records, 0),
+    amount: groups.reduce((t, g) => t + paise(g.amount), 0) / 100,
+    unpriced: groups.reduce((t, g) => t + g.unpricedRecords, 0),
+  };
+}
+
+export function userWiseCsv(groups) {
+  const lines = [['Employee', 'Snacks Taken', 'Total Quantity', 'Records', 'Total Amount (INR)', 'Records Without Price'].map(csvCell).join(',')];
+  for (const g of groups) lines.push([g.name, snackText(g), g.quantity, g.records, g.amount.toFixed(2), g.unpricedRecords].map(csvCell).join(','));
+  const t = userWiseTotals(groups);
+  lines.push(['Total', '', t.quantity, t.records, t.amount.toFixed(2), t.unpriced].map(csvCell).join(','));
+  return '\ufeff' + lines.join('\r\n') + '\r\n';
+}
+
+export function buildUserWisePdf(JsPDF, { groups, label, filename, generatedOn }) {
+  const NAVY = [23, 37, 84], BLUE = [37, 99, 235], TEXT = [15, 23, 42], MUTED = [100, 116, 139], LINE = [226, 232, 240], PALE = [239, 246, 255];
+  const pdf = new JsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+  const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight(), margin = 40, usable = pageW - margin * 2;
+  pdf.setProperties({ title: `User-wise Snack List - ${label}`, creator: 'Office Snacks Tracker' });
+  const widths = [usable * .22, usable * .36, usable * .1, usable * .1, usable * .22], headers = ['EMPLOYEE', 'SNACKS TAKEN', 'QTY', 'RECORDS', 'TOTAL AMOUNT'], aligns = ['l', 'l', 'r', 'r', 'r'];
+  let y = 0;
+  const band = (first) => {
+    pdf.setFillColor(...NAVY); pdf.rect(0, 0, pageW, first ? 96 : 38, 'F'); pdf.setFillColor(...BLUE); pdf.rect(0, first ? 92 : 34, pageW, 4, 'F');
+    pdf.setTextColor(255, 255, 255); pdf.setFont('helvetica', 'bold');
+    if (first) { pdf.setFontSize(19); pdf.text('OFFICE SNACKS TRACKER', margin, 40); pdf.setFontSize(11); pdf.text('USER-WISE SNACK LIST', margin, 62); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.text(`Period: ${label}`, margin, 80); pdf.setFontSize(8); pdf.text(`Generated: ${generatedOn}`, pageW - margin, 80, { align: 'right' }); }
+    else { pdf.setFontSize(11); pdf.text('OFFICE SNACKS TRACKER', margin, 24); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.text(`User-wise Snack List - ${label}`, pageW - margin, 24, { align: 'right' }); }
+  };
+  const head = () => {
+    pdf.setFillColor(...BLUE); pdf.rect(margin, y, usable, 22, 'F'); pdf.setTextColor(255, 255, 255); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8);
+    let x = margin; headers.forEach((t, i) => { pdf.text(t, aligns[i] === 'r' ? x + widths[i] - 6 : x + 6, y + 14, { align: aligns[i] === 'r' ? 'right' : 'left' }); x += widths[i]; }); y += 22;
+  };
+  const newPage = () => { pdf.addPage(); band(false); y = 58; head(); };
+  const row = (cells, { bold = false, fill = null } = {}) => {
+    const wrapped = cells.map((v, i) => pdf.splitTextToSize(String(v), widths[i] - 12)), h = Math.max(...wrapped.map((c) => c.length)) * 11 + 12;
+    if (y + h > pageH - 44) newPage();
+    if (fill) { pdf.setFillColor(...fill); pdf.rect(margin, y, usable, h, 'F'); }
+    pdf.setDrawColor(...LINE); pdf.setLineWidth(0.5); pdf.line(margin, y + h, margin + usable, y + h);
+    pdf.setTextColor(...TEXT); pdf.setFont('helvetica', bold ? 'bold' : 'normal'); pdf.setFontSize(8.5);
+    let x = margin; wrapped.forEach((c, i) => { pdf.text(c, aligns[i] === 'r' ? x + widths[i] - 6 : x + 6, y + 14, { align: aligns[i] === 'r' ? 'right' : 'left' }); x += widths[i]; }); y += h;
+  };
+  band(true); y = 118; head();
+  if (!groups.length) { pdf.setTextColor(...MUTED); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.text('No snack records for this period.', margin, y + 24); y += 40; }
+  groups.forEach((g, i) => row([g.name, snackText(g), g.quantity, g.records, formatPdfINR(g.amount) + (g.unpricedRecords ? ` (+${g.unpricedRecords} no price)` : '')], { fill: i % 2 ? [248, 250, 252] : null }));
+  const t = userWiseTotals(groups);
+  if (groups.length) row(['Total', '', t.quantity, t.records, formatPdfINR(t.amount)], { bold: true, fill: PALE });
+  if (t.unpriced) { y += 14; pdf.setTextColor(...MUTED); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.text(`${t.unpriced} record(s) have no saved price and are not included in the amounts.`, margin, y); }
+  const pages = pdf.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) { pdf.setPage(i); pdf.setDrawColor(...LINE); pdf.line(margin, pageH - 30, pageW - margin, pageH - 30); pdf.setTextColor(...MUTED); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.text(filename, margin, pageH - 16); pdf.text(`Page ${i} of ${pages}`, pageW - margin, pageH - 16, { align: 'right' }); }
+  return pdf;
+}

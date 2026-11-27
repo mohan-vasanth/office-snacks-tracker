@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildInvoiceReport, formatINR, formatPdfINR, buildInvoicePdf } from '../src/invoiceReport.js';
+import { buildInvoiceReport, formatINR, formatPdfINR, buildInvoicePdf, userWiseCsv, userWiseTotals, buildUserWisePdf } from '../src/invoiceReport.js';
 
 const rec = (id, emp, name, snack, sname, qty, price, takenAt) => ({ id, employeeId: emp, employeeName: name, snackId: snack, snackName: sname, quantity: qty, unitPrice: price, takenAt });
 const rows = [
@@ -55,6 +55,35 @@ test('PDF builds for empty, small and multi-page reports', async () => {
   for (const [rs, minPages] of [[[], 1], [rows, 1], [big, 3]]) {
     const pdf = buildInvoicePdf(jsPDF, { report: buildInvoiceReport(rs), monthLabel: 'November 2026', month: '2026-11', generatedOn: 'test' });
     assert.ok(pdf.getNumberOfPages() >= minPages);
+    assert.ok(pdf.output('arraybuffer').byteLength > 1000);
+  }
+});
+
+const GROUPS = [
+  { name: 'Asha', snacks: [{ name: 'Samosa', quantity: 3 }, { name: 'Tea', quantity: 2 }], quantity: 5, records: 2, amount: 66.5, unpricedRecords: 0 },
+  { name: '=Evil', snacks: [{ name: 'Vada', quantity: 2 }], quantity: 2, records: 1, amount: 0.1, unpricedRecords: 1 },
+  { name: 'Ravi "R"', snacks: [{ name: 'Tea', quantity: 1 }], quantity: 1, records: 1, amount: 0.2, unpricedRecords: 0 },
+];
+test('user-wise CSV: header, one row per employee, escaped cells, exact total', () => {
+  const lines = userWiseCsv(GROUPS).replace('﻿', '').trim().split('\r\n');
+  assert.equal(lines[0], '"Employee","Snacks Taken","Total Quantity","Records","Total Amount (INR)","Records Without Price"');
+  assert.equal(lines[1], '"Asha","Samosa x 3; Tea x 2","5","2","66.50","0"');
+  assert.ok(lines[2].startsWith(`"'=Evil"`)); // formula injection guard
+  assert.ok(lines[3].startsWith('"Ravi ""R"""'));
+  assert.equal(lines[4], '"Total","","8","4","66.80","1"');
+  assert.deepEqual(userWiseTotals(GROUPS), { quantity: 8, records: 4, amount: 66.8, unpriced: 1 });
+});
+test('user-wise CSV with no data still has a header and a zero total', () => {
+  const lines = userWiseCsv([]).replace('﻿', '').trim().split('\r\n');
+  assert.equal(lines.length, 2);
+  assert.equal(lines[1], '"Total","","0","0","0.00","0"');
+});
+test('user-wise PDF builds for empty, small and multi-page lists', async () => {
+  const { jsPDF } = await import('jspdf');
+  const many = Array.from({ length: 90 }, (_, i) => ({ name: `Employee ${i + 1}`, snacks: [{ name: 'Tea', quantity: 2 }, { name: 'Samosa', quantity: 1 }], quantity: 3, records: 2, amount: 40, unpricedRecords: 0 }));
+  for (const [g, min] of [[[], 1], [GROUPS, 1], [many, 2]]) {
+    const pdf = buildUserWisePdf(jsPDF, { groups: g, label: 'November 2026', filename: 'x.pdf', generatedOn: 'test' });
+    assert.ok(pdf.getNumberOfPages() >= min);
     assert.ok(pdf.output('arraybuffer').byteLength > 1000);
   }
 });
