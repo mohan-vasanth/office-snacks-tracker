@@ -109,3 +109,6 @@ html[data-theme=dark] tfoot td{background:#111b2e;border-top-color:#273449}html[
 html[data-theme=dark] .crumb{color:#94a3b8}
 html[data-theme=dark] .user-badge b,html[data-theme=dark] .rank-name,html[data-theme=dark] .recent-copy b,html[data-theme=dark] .report-snack{color:#e5e7eb}
 html[data-theme=dark] .report-snack b{color:#5eead4}
+html[data-theme=dark] select option{background:#111b2e;color:#e5e7eb}
+html[data-theme=dark] .snack-item-row label select,html[data-theme=dark] .snack-item-row label input,html[data-theme=dark] .edit-modal select,html[data-theme=dark] .edit-modal input{color:#e5e7eb}
+html[data-theme=dark] .snack-item-row label{color:#94a3b8}

@@ -106,3 +106,8 @@ th{color:#334155;font-weight:800}
 .crumb{color:#475569;font-weight:600}
 .topbar b{color:#0f172a;font-weight:800}
 .user-badge b{font-size:13px;font-weight:800;color:#0f172a}
+/* dropdowns: dark, bold snack/option names */
+select,.filters select,.snack-item-row label select,.edit-modal select{color:#0f172a;font-weight:700;font-size:12px}
+select option{color:#0f172a;font-weight:700;background:#fff}
+.snack-item-row label input,.edit-modal input{color:#0f172a;font-weight:700;font-size:12px}
+.snack-item-row label{color:#334155}
